@@ -45,6 +45,11 @@ def _chapter_from_html(html: str, chapter_header: str) -> Optional[str]:
             return header.next_sibling.get_text()
 
 
+def _text_from_html(html: str) -> str:
+    soup = BeautifulSoup(html, "html.parser")
+    return soup.get_text()
+
+
 def _get_raw_source(type_: str, path: str) -> str:
     """Handle the source fetching: get the raw HTML out of filepath or url"""
     def _read_file(filepath: str) -> str:
@@ -79,14 +84,15 @@ def main():
     abstract = _chapter_from_html(raw_html, "abstract")
     _logger.debug("ABSTRACT: {}".format(abstract))
 
-    if abstract is None:
-        _logger.info("No abstract found.")
+    text = _text_from_html(raw_html)
+    if text is None:
+        _logger.info("No text found.")
         return
 
     # Preprocessing
-    abstract = abstract.lower()
-    abstract = _remove_punctuation(abstract)
-    tokens = _tokenize_text(abstract, nltk.tokenize.word_tokenize)
+    text = text.lower()
+    text = _remove_punctuation(text)
+    tokens = _tokenize_text(text, nltk.tokenize.word_tokenize)
     tokens_without_stopwords = _remove_stopwords(tokens, _STOP_WORDS)
     stemmed_tokens = _stemming(tokens_without_stopwords, nltk.PorterStemmer())
 
