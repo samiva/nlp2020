@@ -6,20 +6,22 @@ the CLI and the actual automatic summarization functionality.
 
 import argparse
 import logging
-import nltk.tokenize
-from nltk.probability import FreqDist
-from nltk.corpus import stopwords
-import matplotlib.pyplot
 import re
 import string
 import urllib.request
 
-from typing import Sequence, List
+from typing import Sequence
+
+import matplotlib.pyplot
+import nltk.tokenize
 
 from bs4 import BeautifulSoup
+from nltk.probability import FreqDist
+from nltk.corpus import stopwords
 
 _logger = logging.getLogger(__name__)
 _LOGGING_FORMAT = "%(asctime)s %(module)s [%(levelname)s]: %(message)s"
+_STOP_WORDS = stopwords.words('english')
 
 
 def _abstract_from_html(html: str) -> str:
@@ -40,10 +42,6 @@ def _argument_parser() -> argparse.ArgumentParser:
                         type=str,
                         help="Filepath or URL pointing to source.")
     return parser
-
-
-def _calculate_word_frequency_distribution(tokens: Sequence[str]) -> FreqDist:
-    return FreqDist(tokens)
 
 
 def _get_raw_source(type_: str, path: str) -> str:
@@ -81,21 +79,17 @@ def main():
     _logger.debug("ABSTRACT: {}".format(abstract))
 
     # Preprocessing
-    abstract = _lower_case_text(abstract)
+    abstract = abstract.lower()
     abstract = _remove_punctuation(abstract)
     tokens = _tokenize_text(abstract, nltk.tokenize.word_tokenize)
-    tokens_without_stopwords = _remove_stopwords(tokens, stopwords.words('english'))
+    tokens_without_stopwords = _remove_stopwords(tokens, _STOP_WORDS)
     stemmed_tokens = _stemming(tokens_without_stopwords, nltk.PorterStemmer())
 
     _logger.debug("TOKENS: {}".format(stemmed_tokens))
 
     # Frequency distribution
-    frequency_distribution = _calculate_word_frequency_distribution(stemmed_tokens)
+    frequency_distribution = _word_frequency_distribution(stemmed_tokens)
     _plot_frequency_distribution(frequency_distribution)
-
-
-def _lower_case_text(text: str) -> str:
-    return "".join([l.lower() for l in text])
 
 
 def _plot_frequency_distribution(fdist: FreqDist) -> None:
@@ -105,14 +99,14 @@ def _plot_frequency_distribution(fdist: FreqDist) -> None:
 
 
 def _remove_punctuation(text: str) -> str:
-    return "".join([l for l in text if l not in string.punctuation])
+    return "".join([c for c in text if c not in string.punctuation])
 
 
-def _remove_stopwords(tokens: Sequence[str], stopwords: List[str]) -> Sequence[str]:
-    return [w for w in tokens if w not in stopwords]
+def _remove_stopwords(tokens: Sequence[str], wordlist: Sequence[str]) -> Sequence[str]:
+    return [w for w in tokens if w not in wordlist]
 
 
-def _stemming(tokens: Sequence[str], stemmer: object) -> Sequence[str]:
+def _stemming(tokens: Sequence[str], stemmer) -> Sequence[str]:
     return [stemmer.stem(w) for w in tokens]
 
 
@@ -127,8 +121,12 @@ def _titles_from_html(html: str) -> Sequence[str]:
     return titles
 
 
-def _tokenize_text(text: str, tokenizer: object) -> Sequence[str]:
+def _tokenize_text(text: str, tokenizer) -> Sequence[str]:
     return tokenizer(text)
+
+
+def _word_frequency_distribution(tokens: Sequence[str]) -> FreqDist:
+    return FreqDist(tokens)
 
 
 if __name__ == "__main__":
