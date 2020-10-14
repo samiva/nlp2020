@@ -6,10 +6,12 @@ the CLI and the actual automatic summarization functionality.
 
 import argparse
 import logging
+import nltk
 import re
+import string
 import urllib.request
 
-from typing import Sequence
+from typing import Sequence, List
 
 from bs4 import BeautifulSoup
 
@@ -72,6 +74,22 @@ def main():
     _logger.debug("ABSTRACT: {}".format(abstract))
 
 
+def _lower_case_text(text: str) -> str:
+    return "".join([l.lower() for l in text])
+
+
+def _remove_punctuation(text: str) -> str:
+    return "".join([l for l in text if l not in string.punctuation])
+
+
+def _remove_stopwords(text: str, stopwords: List[str]) -> str:
+    return "".join([w for w in text if w not in stopwords])
+
+
+def _stemming(text: str, stemmer: object) -> str:
+    return "".join([stemmer.stem(w) for w in text])
+
+
 def _titles_from_html(html: str) -> Sequence[str]:
     """Returns the title(s) and headers as a list."""
     soup = BeautifulSoup(html, "html.parser")
@@ -81,6 +99,10 @@ def _titles_from_html(html: str) -> Sequence[str]:
     # https://stackoverflow.com/questions/45062534/how-to-grab-all-headers-from-a-website-using-beautifulsoup
     titles.extend(a.get_text().strip("¶") for a in soup.find_all(re.compile('^h[1-6]$')))
     return titles
+
+
+def _tokenize_text(text: str, tokenizer: object) -> Sequence[str]:
+    return tokenizer(text)
 
 
 if __name__ == "__main__":
