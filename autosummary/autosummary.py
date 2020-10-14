@@ -10,7 +10,7 @@ import re
 import string
 import urllib.request
 
-from typing import Sequence
+from typing import Sequence, Optional
 
 import matplotlib.pyplot
 import nltk.tokenize
@@ -19,17 +19,10 @@ from bs4 import BeautifulSoup
 from nltk.probability import FreqDist
 from nltk.corpus import stopwords
 
+
 _logger = logging.getLogger(__name__)
 _LOGGING_FORMAT = "%(asctime)s %(module)s [%(levelname)s]: %(message)s"
 _STOP_WORDS = stopwords.words('english')
-
-
-def _abstract_from_html(html: str) -> str:
-    soup = BeautifulSoup(html, "html.parser")
-    for header in soup.find_all(re.compile('^h[1-6]$')):
-        if header.get_text().upper() == "ABSTRACT":
-            # Get the text of the following item after the abstract header
-            return header.next_sibling.get_text()
 
 
 def _argument_parser() -> argparse.ArgumentParser:
@@ -42,6 +35,14 @@ def _argument_parser() -> argparse.ArgumentParser:
                         type=str,
                         help="Filepath or URL pointing to source.")
     return parser
+
+
+def _chapter_from_html(html: str, chapter_header: str) -> Optional[str]:
+    soup = BeautifulSoup(html, "html.parser")
+    for header in soup.find_all(re.compile('^h[1-6]$')):
+        if header.get_text().upper() == chapter_header.upper():
+            # Get the text of the following item after the chapter header
+            return header.next_sibling.get_text()
 
 
 def _get_raw_source(type_: str, path: str) -> str:
@@ -75,8 +76,12 @@ def main():
     titles = _titles_from_html(raw_html)
     _logger.debug("TITLES: {}".format(titles))
     # Get the abstract (if it exists)
-    abstract = _abstract_from_html(raw_html)
+    abstract = _chapter_from_html(raw_html, "abstract")
     _logger.debug("ABSTRACT: {}".format(abstract))
+
+    if abstract is None:
+        _logger.info("No abstract found.")
+        return
 
     # Preprocessing
     abstract = abstract.lower()
