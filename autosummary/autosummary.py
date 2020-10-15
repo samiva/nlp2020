@@ -10,7 +10,7 @@ import re
 import string
 import urllib.request
 
-from typing import Dict, Sequence, Optional
+from typing import Dict, Sequence, Tuple, Optional
 
 import matplotlib.pyplot
 import nltk.tokenize
@@ -144,6 +144,14 @@ def _named_entities_from_text(text: str, labels: Sequence[str]) -> Sequence[str]
     return list(set(wanted_ents))
 
 
+def _named_entity_in_sentence(sentence: Sequence[str],
+                              named_ents: Sequence[str]) -> bool:
+    for word in sentence:
+        if word in named_ents:
+            return True
+    return False
+
+
 def _plot_frequency_distribution(fdist: FreqDist) -> None:
     """TODO: Generate histogram"""
     fdist.plot()
@@ -169,6 +177,76 @@ def _sentences_by_chapters(texts_by_chapters: Dict[str, str]) -> Dict[str, Seque
 
 def _stemming(tokens: Sequence[str], stemmer) -> Sequence[str]:
     return [stemmer.stem(w) for w in tokens]
+
+
+def _summarize(raw_sentences: Sequence[str],
+               title: Tuple[str, Sequence[str]],
+               stemmed_sentences: Sequence[Tuple[str, Sequence[str]]],
+               stemmed_high_freq_words: Sequence[str],
+               named_ents: Sequence[str]) -> Sequence[str]:
+    """
+    :param raw_sentences: Unstemmed sentences
+    :param title: raw title and stemmed title (as sequence of str words)
+    :param stemmed_sentences:
+    :param stemmed_high_freq_words:
+    :param named_ents: Stemmed named entities
+    :return:
+    """
+    # Sentences as strings
+    summary_sentences = []
+    # Indexes of the sentences
+    summary_indexes = []
+    for word in stemmed_high_freq_words:
+        summary_index, summary_sentence = _summarize_for_word(raw_sentences,
+                                                              title,
+                                                              stemmed_sentences,
+                                                              word,
+                                                              named_ents,
+                                                              summary_indexes)
+        if summary_sentence is not None:
+            summary_sentences.append(summary_sentence)
+            summary_indexes.append(summary_index)
+    return summary_sentences
+
+
+def _summarize_for_word(raw_sentences: Sequence[str],
+                        title: Tuple[str, Sequence[str]],
+                        stemmed_sentences: Sequence[Tuple[str, Sequence[str]]],
+                        word: str,
+                        named_ents: Sequence[str],
+                        already_selected: Sequence[int]) -> Optional[Tuple[int, str]]:
+    summary_sentence_candidate = None
+    if -1 not in already_selected:
+        # Title is not yet added (-1 is considered the title)
+        if word in title[1]:
+            return -1, title[0]
+
+    for i, sentences_repr in enumerate(stemmed_sentences):
+        sentence_chapter = sentences_repr[0]
+        sentence = sentences_repr[1]
+        # i for indexing sentences: Order of summary sentences!
+        if word in sentence:
+            if sentence_chapter.upper() == "ABSTRACT":
+                # High freq word in a sentence within abstract
+                if i not in already_selected:
+                    # The sentence is not yet in the summary, add it!
+                    _logger.info("SUMMARY - SENTENCE IN ABSTRACT")
+                    return i, raw_sentences[i]
+            if _named_entity_in_sentence(sentence, named_ents):
+                # High freq word and named entity in the sentence
+                if i not in already_selected:
+                    # The sentence is not yet in the summary, add it!
+                    _logger.info("SUMMARY - SENTENCE CONTAINS NAMED ENTITY")
+                    return i, raw_sentences[i]
+            if i not in already_selected and summary_sentence_candidate is None:
+                # No "First sentence not in title/abstract that doesn't contain
+                # named entity" - candidate currently. This is the one.
+                summary_sentence_candidate = i, raw_sentences[i]
+
+    # There was no high freq word in title/abstract and no sentence contained
+    # both a high freq word and a named entity. Returning the first not yet
+    # included sentence that contained a high freq word.
+    return summary_sentence_candidate
 
 
 def _texts_by_chapters(html: str, titles: Sequence[str]) -> Dict[str, str]:
