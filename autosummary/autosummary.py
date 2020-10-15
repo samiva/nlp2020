@@ -140,7 +140,8 @@ def _named_entities_from_text(text: str, labels: Sequence[str]) -> Sequence[str]
     labels = [label.upper() for label in labels]
 
     wanted_ents = [ent.text for ent in doc.ents if ent.label_ in labels]
-    return wanted_ents
+    # Cut out duplicates
+    return list(set(wanted_ents))
 
 
 def _plot_frequency_distribution(fdist: FreqDist) -> None:
