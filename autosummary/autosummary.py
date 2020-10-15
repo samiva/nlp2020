@@ -76,6 +76,17 @@ def _get_raw_source(type_: str, path: str) -> str:
     return source_handler[type_](path)
 
 
+def _headers_from_html(html: str) -> Sequence[str]:
+    """Returns the headers as a list of strings."""
+    soup = BeautifulSoup(html, "html.parser")
+    # Get the title(s)
+    titles = [a.get_text() for a in soup.find_all("title")]
+    # Get all headers in the order of appearance
+    # https://stackoverflow.com/questions/45062534/how-to-grab-all-headers-from-a-website-using-beautifulsoup
+    titles.extend(a.get_text().strip("¶") for a in soup.find_all(re.compile('^h[1-6]$')))
+    return titles
+
+
 def _highest_freq_words(freq_dist: FreqDist, word_count: int) -> Sequence[str]:
     return [a[0] for a in freq_dist.most_common(word_count)]
 
@@ -92,8 +103,9 @@ def main():
     raw_html = _get_raw_source(source_type, source_path)
     # Get the titles & headers
     titles = _titles_from_html(raw_html)
-    _logger.debug("TITLES: {}".format(titles))
-    texts_by_chapters = _texts_by_chapters(raw_html, titles)
+    headers = _headers_from_html(raw_html)
+    _logger.debug("HEADERS: {}".format(headers))
+    texts_by_chapters = _texts_by_chapters(raw_html, headers)
     _logger.debug(texts_by_chapters)
 
     text = _text_from_html(raw_html)
@@ -174,13 +186,10 @@ def _text_from_html(html: str) -> str:
 
 
 def _titles_from_html(html: str) -> Sequence[str]:
-    """Returns the title(s) and headers as a list."""
+    """Returns the headers as a list of strings."""
     soup = BeautifulSoup(html, "html.parser")
     # Get the title(s)
     titles = [a.get_text() for a in soup.find_all("title")]
-    # Get all headers in the order of appearance
-    # https://stackoverflow.com/questions/45062534/how-to-grab-all-headers-from-a-website-using-beautifulsoup
-    titles.extend(a.get_text().strip("¶") for a in soup.find_all(re.compile('^h[1-6]$')))
     return titles
 
 
