@@ -27,6 +27,11 @@ _NAMED_ENTITY_TAGS = ("PERSON", "ORG")
 # string.punctuation doesn't consider these different quotation marks by default
 _PUNCTUATION = string.punctuation + r'“' + r'”'
 _STOP_WORDS = stopwords.words('english')
+_UNWANTED_CHAPTERS = ("REFERENCES",
+                      "LIST OF REFERENCES",
+                      "CITATIONS",
+                      "APPENDIX",
+                      "APPENDIXES")
 
 
 def _argument_parser() -> argparse.ArgumentParser:
@@ -95,7 +100,8 @@ def _headers_from_html(html: str) -> Sequence[str]:
     # Get all headers in the order of appearance
     # https://stackoverflow.com/questions/45062534/how-to-grab-all-headers-from-a-website-using-beautifulsoup
     headers = [a.get_text().strip("¶") for a in soup.find_all(re.compile('^h[1-6]$'))]
-    # TODO: Consider dropping references as name letters may become high freq words
+    # Remove unwanted chapters
+    headers = [a for a in headers if a.upper() not in _UNWANTED_CHAPTERS]
     return headers
 
 
@@ -257,17 +263,22 @@ def _summarize(raw_sentences: Sequence[Tuple[str, Sequence[str]]],
     # Sentences as ((index, index2), strings) tuple
     summary_sentences = []
     for word in high_freq_words:
-        summary_index, summary_sentence = _summarize_for_word(raw_sentences,
-                                                              title,
-                                                              processed_sentences,
-                                                              word,
-                                                              named_ents,
-                                                              summary_sentences)
-        if summary_sentence is not None:
-            index_chapter, index_sentence = summary_index
-            summary_sentences.append(((index_chapter, index_sentence), summary_sentence))
+        result = _summarize_for_word(raw_sentences,
+                                     title,
+                                     processed_sentences,
+                                     word,
+                                     named_ents,
+                                     summary_sentences)
+        if result is None:
+            continue
+        summary_index, summary_sentence = result
+        index_chapter, index_sentence = summary_index
+        summary_sentences.append(((index_chapter, index_sentence), summary_sentence))
     summary_sentences.sort()
-    return "".join([a[1] for a in summary_sentences])
+    if title[0] in summary_sentences:
+        # Title is (-1, -1) so it's always the first one
+        summary_sentences[0] = summary_sentences.upper() + "\n\n"
+    return " ".join([a[1] for a in summary_sentences])
 
 
 def _summarize_for_word(raw_sentences: Sequence[Tuple[str, Sequence[str]]],
