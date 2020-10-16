@@ -24,6 +24,8 @@ from nltk.corpus import stopwords
 _logger = logging.getLogger(__name__)
 _LOGGING_FORMAT = "%(asctime)s %(module)s [%(levelname)s]: %(message)s"
 _NAMED_ENTITY_TAGS = ("PERSON", "ORG")
+# string.punctuation doesn't consider these different quotation marks by default
+_PUNCTUATION = string.punctuation + r'“' + r'”'
 _STOP_WORDS = stopwords.words('english')
 
 
@@ -212,7 +214,7 @@ def _preprocess_words(words: Sequence[str]) -> Sequence[str]:
 
 
 def _remove_punctuation(text: str) -> str:
-    return "".join([c for c in text if c not in string.punctuation])
+    return "".join([c for c in text if c not in _PUNCTUATION])
 
 
 def _remove_stopwords(tokens: Sequence[str], wordlist: Sequence[str]) -> Sequence[str]:
