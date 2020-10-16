@@ -91,6 +91,11 @@ def _highest_freq_words(freq_dist: FreqDist, word_count: int) -> Sequence[str]:
     return [a[0] for a in freq_dist.most_common(word_count)]
 
 
+def _lemmatize_tokens(tokens: Sequence[str]) -> Sequence[str]:
+    wnl = nltk.WordNetLemmatizer()
+    return [wnl.lemmatize(t) for t in tokens]
+
+
 def main():
     logging.basicConfig(level=logging.DEBUG,
                         format=_LOGGING_FORMAT)
@@ -118,12 +123,13 @@ def main():
     text_processed = _remove_punctuation(text)
     tokens = _tokenize_text(text_processed, nltk.tokenize.word_tokenize)
     tokens_without_stopwords = _remove_stopwords(tokens, _STOP_WORDS)
-    stemmed_tokens = _stemming(tokens_without_stopwords, nltk.PorterStemmer())
-    _logger.debug("TOKENS: {}".format(stemmed_tokens))
+    # stemmed_tokens = _stemming(tokens_without_stopwords, nltk.PorterStemmer())
+    lemmatized_tokens = _lemmatize_tokens(tokens_without_stopwords)
+    _logger.debug("TOKENS: {}".format(lemmatized_tokens))
 
     # Frequency distribution
     freq_dist = _word_frequency_distribution(tokens_without_stopwords)
-    _plot_frequency_distribution(freq_dist)
+    #_plot_frequency_distribution(freq_dist)
 
     # TODO: Needed for determining whether a sentence is part of a specific chapter
     sentences_by_chapters = _sentences_by_chapters(texts_by_chapters)
