@@ -95,6 +95,7 @@ def _headers_from_html(html: str) -> Sequence[str]:
     # Get all headers in the order of appearance
     # https://stackoverflow.com/questions/45062534/how-to-grab-all-headers-from-a-website-using-beautifulsoup
     headers = [a.get_text().strip("¶") for a in soup.find_all(re.compile('^h[1-6]$'))]
+    # TODO: Consider dropping references as name letters may become high freq words
     return headers
 
 
@@ -143,6 +144,12 @@ def main():
     _logger.info("PROCESSED NAMED ENTITIES: {}".format(processed_named_ents))
     high_freq_words = _highest_freq_words(freq_dist, word_count)
     _logger.info("HIGH FREQ WORDS: {}".format(high_freq_words))
+    summary = _summarize(sentences_by_chapters,
+                         title,
+                         processed_wordlists_by_chapters,
+                         high_freq_words,
+                         processed_named_ents)
+    _logger.info("SUMMARY: {}".format(summary))
 
 
 def _named_entities_from_text_chapters(texts_by_chapters: Sequence[Tuple[str, str]],
@@ -234,69 +241,69 @@ def _stemming(tokens: Sequence[str], stemmer) -> Sequence[str]:
     return [stemmer.stem(w) for w in tokens]
 
 
-def _summarize(raw_sentences: Sequence[str],
+def _summarize(raw_sentences: Sequence[Tuple[str, Sequence[str]]],
                title: Tuple[str, Sequence[str]],
-               stemmed_sentences: Sequence[Tuple[str, Sequence[str]]],
-               stemmed_high_freq_words: Sequence[str],
+               processed_sentences: Sequence[Tuple[str, Sequence[Sequence[str]]]],
+               high_freq_words: Sequence[str],
                named_ents: Sequence[str]) -> Sequence[str]:
     """
-    :param raw_sentences: Unstemmed sentences
-    :param title: raw title and stemmed title (as sequence of str words)
-    :param stemmed_sentences:
-    :param stemmed_high_freq_words:
-    :param named_ents: Stemmed named entities
+    :param raw_sentences: Unprocessed sentences grouped by header
+    :param title: raw title and processed title (as sequence of words)
+    :param processed_sentences: Processed sentences split into words and grouped by header
+    :param high_freq_words: List of processed high frequency words
+    :param named_ents: List of processed named entities
     :return:
     """
-    # Sentences as strings
+    # Sentences as ((index, index2), strings) tuple
     summary_sentences = []
-    # Indexes of the sentences
-    summary_indexes = []
-    for word in stemmed_high_freq_words:
+    for word in high_freq_words:
         summary_index, summary_sentence = _summarize_for_word(raw_sentences,
                                                               title,
-                                                              stemmed_sentences,
+                                                              processed_sentences,
                                                               word,
                                                               named_ents,
-                                                              summary_indexes)
+                                                              summary_sentences)
         if summary_sentence is not None:
-            summary_sentences.append(summary_sentence)
-            summary_indexes.append(summary_index)
-    return summary_sentences
+            index_chapter, index_sentence = summary_index
+            summary_sentences.append(((index_chapter, index_sentence), summary_sentence))
+    summary_sentences.sort()
+    return "".join([a[1] for a in summary_sentences])
 
 
-def _summarize_for_word(raw_sentences: Sequence[str],
+def _summarize_for_word(raw_sentences: Sequence[Tuple[str, Sequence[str]]],
                         title: Tuple[str, Sequence[str]],
-                        stemmed_sentences: Sequence[Tuple[str, Sequence[str]]],
+                        processed_sentences: Sequence[Tuple[str, Sequence[Sequence[str]]]],
                         word: str,
                         named_ents: Sequence[str],
-                        already_selected: Sequence[int]) -> Optional[Tuple[int, str]]:
+                        already_selected: Sequence[Tuple[Tuple[int, int], str]])\
+        -> Optional[Tuple[Tuple[int, int], Sequence[str]]]:
     summary_sentence_candidate = None
-    if -1 not in already_selected:
+    already_selected_indexes = [a[0] for a in already_selected]
+    if (-1, -1) not in already_selected_indexes:
         # Title is not yet added (-1 is considered the title)
         if word in title[1]:
-            return -1, title[0]
+            return (-1, -1), title[0]
 
-    for i, sentences_repr in enumerate(stemmed_sentences):
-        sentence_chapter = sentences_repr[0]
-        sentence = sentences_repr[1]
+    for i, (chapter_header, sentences) in enumerate(processed_sentences):
         # i for indexing sentences: Order of summary sentences!
-        if word in sentence:
-            if sentence_chapter.upper() == "ABSTRACT":
-                # High freq word in a sentence within abstract
-                if i not in already_selected:
-                    # The sentence is not yet in the summary, add it!
-                    _logger.info("SUMMARY - SENTENCE IN ABSTRACT")
-                    return i, raw_sentences[i]
-            if _named_entity_in_sentence(sentence, named_ents):
-                # High freq word and named entity in the sentence
-                if i not in already_selected:
-                    # The sentence is not yet in the summary, add it!
-                    _logger.info("SUMMARY - SENTENCE CONTAINS NAMED ENTITY")
-                    return i, raw_sentences[i]
-            if i not in already_selected and summary_sentence_candidate is None:
-                # No "First sentence not in title/abstract that doesn't contain
-                # named entity" - candidate currently. This is the one.
-                summary_sentence_candidate = i, raw_sentences[i]
+        for j, sentence in enumerate(sentences):
+            if word in sentence:
+                if chapter_header.upper() == "ABSTRACT":
+                    # High freq word in a sentence within abstract
+                    if (i, j) not in already_selected_indexes:
+                        # The sentence is not yet in the summary, add it!
+                        _logger.info("SUMMARY - SENTENCE IN ABSTRACT")
+                        return (i, j), raw_sentences[i][1][j]
+                if _named_entity_in_sentence(sentence, named_ents):
+                    # High freq word and named entity in the sentence
+                    if (i, j) not in already_selected_indexes:
+                        # The sentence is not yet in the summary, add it!
+                        _logger.info("SUMMARY - SENTENCE CONTAINS NAMED ENTITY")
+                        return (i, j), raw_sentences[i][1][j]
+                if (i, j) not in already_selected_indexes and summary_sentence_candidate is None:
+                    # No "First sentence not in title/abstract that doesn't contain
+                    # named entity" - candidate currently. This is the one.
+                    summary_sentence_candidate = (i, j), raw_sentences[i][1][j]
 
     # There was no high freq word in title/abstract and no sentence contained
     # both a high freq word and a named entity. Returning the first not yet
