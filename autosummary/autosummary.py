@@ -58,6 +58,17 @@ def _chapter_from_html(html: str, chapter_header: str) -> Optional[str]:
                 return None
 
 
+def _freq_dist_for_word_lists(processed_wordlists_by_chapters: Sequence[Tuple[str, Sequence[Sequence[str]]]]) -> FreqDist:
+    """Turn the list of (header, wordlist) representation into a list of words.
+    Run the word frequency distribution for these words."""
+    words = []
+    for header, sentences in processed_wordlists_by_chapters:
+        for sentence in sentences:
+            # Gather up a list of words
+            words.extend(sentence)
+    return _word_frequency_distribution(words)
+
+
 def _get_raw_source(type_: str, path: str) -> str:
     """Handle the source fetching: get the raw HTML out of filepath or url"""
     def _read_file(filepath: str) -> str:
@@ -79,12 +90,10 @@ def _get_raw_source(type_: str, path: str) -> str:
 def _headers_from_html(html: str) -> Sequence[str]:
     """Returns the headers as a list of strings."""
     soup = BeautifulSoup(html, "html.parser")
-    # Get the title(s)
-    titles = [a.get_text() for a in soup.find_all("title")]
     # Get all headers in the order of appearance
     # https://stackoverflow.com/questions/45062534/how-to-grab-all-headers-from-a-website-using-beautifulsoup
-    titles.extend(a.get_text().strip("¶") for a in soup.find_all(re.compile('^h[1-6]$')))
-    return titles
+    headers = [a.get_text().strip("¶") for a in soup.find_all(re.compile('^h[1-6]$'))]
+    return headers
 
 
 def _highest_freq_words(freq_dist: FreqDist, word_count: int) -> Sequence[str]:
@@ -107,47 +116,46 @@ def main():
 
     raw_html = _get_raw_source(source_type, source_path)
     # Get the titles & headers
-    titles = _titles_from_html(raw_html)
-    headers = _headers_from_html(raw_html)
-    _logger.debug("HEADERS: {}".format(headers))
-    texts_by_chapters = _texts_by_chapters(raw_html, headers)
-    _logger.debug(texts_by_chapters)
+    title_raw = _title_from_html(raw_html)
+    headers_raw = _headers_from_html(raw_html)
+    _logger.debug("HEADERS: {}".format(headers_raw))
+    texts_by_chapters = _texts_by_chapters(raw_html, headers_raw)
+    sentences_by_chapters = _sentences_by_chapters(texts_by_chapters)
+    _logger.debug("SENTENCES BY CHAPTERS: {}".format(sentences_by_chapters))
 
-    text = _text_from_html(raw_html)
-    if text is None:
+    if sentences_by_chapters is None:
         _logger.info("No text found.")
         return
 
     # Preprocessing
-    text = text.lower()
-    text_processed = _remove_punctuation(text)
-    tokens = _tokenize_text(text_processed, nltk.tokenize.word_tokenize)
-    tokens_without_stopwords = _remove_stopwords(tokens, _STOP_WORDS)
-    # stemmed_tokens = _stemming(tokens_without_stopwords, nltk.PorterStemmer())
-    lemmatized_tokens = _lemmatize_tokens(tokens_without_stopwords)
-    _logger.debug("TOKENS: {}".format(lemmatized_tokens))
+    processed_wordlists_by_chapters = _preprocess_sentences(sentences_by_chapters)
+    _logger.debug("PROCESSED LISTS OF WORDS BY CHAPTERS: {}".format(processed_wordlists_by_chapters))
 
     # Frequency distribution
-    freq_dist = _word_frequency_distribution(tokens_without_stopwords)
-    #_plot_frequency_distribution(freq_dist)
+    freq_dist = _freq_dist_for_word_lists(processed_wordlists_by_chapters)
+    _plot_frequency_distribution(freq_dist)
 
-    # TODO: Needed for determining whether a sentence is part of a specific chapter
-    sentences_by_chapters = _sentences_by_chapters(texts_by_chapters)
-
-    named_ents = _named_entities_from_text(text, _NAMED_ENTITY_TAGS)
-    _logger.info("NAMED ENTITIES: {}".format(named_ents))
+    title = (title_raw, _tokenize_text(title_raw.lower(), nltk.tokenize.word_tokenize))
+    processed_named_ents = _named_entities_from_text_chapters(texts_by_chapters,
+                                                              _NAMED_ENTITY_TAGS)
+    _logger.info("PROCESSED NAMED ENTITIES: {}".format(processed_named_ents))
     high_freq_words = _highest_freq_words(freq_dist, word_count)
     _logger.info("HIGH FREQ WORDS: {}".format(high_freq_words))
 
 
-def _named_entities_from_text(text: str, labels: Sequence[str]) -> Sequence[str]:
-    nlp = spacy.load("en_core_web_sm")
-    doc = nlp(text)
+def _named_entities_from_text_chapters(texts_by_chapters: Sequence[Tuple[str, str]],
+                                       labels: Sequence[str]) -> Sequence[str]:
     labels = [label.upper() for label in labels]
+    nlp = spacy.load("en_core_web_sm")
 
-    wanted_ents = [ent.text for ent in doc.ents if ent.label_ in labels]
+    wanted_ents = []
+    for header, chapter in texts_by_chapters:
+        doc = nlp(chapter)
+        wanted_ents.extend([ent.text for ent in doc.ents if ent.label_ in labels])
+    # Preprocess
+    processed_wanted_ents = _preprocess_words(wanted_ents)
     # Cut out duplicates
-    return list(set(wanted_ents))
+    return list(set(processed_wanted_ents))
 
 
 def _named_entity_in_sentence(sentence: Sequence[str],
@@ -164,6 +172,45 @@ def _plot_frequency_distribution(fdist: FreqDist) -> None:
     #matplotlib.pyplot.hist(fdist.tabulate())
 
 
+def _preprocess_sentences(sentences_by_chapters: Sequence[Tuple[str, Sequence[str]]]) \
+        -> Sequence[Tuple[str, Sequence[Sequence[str]]]]:
+    """Go through chapters header at a time. For each header, go through the
+    chapter sentences one sentence at a time. Preprocess each sentence into
+    a list of preprocessed words."""
+    processed_words_by_chapters = []
+    for header, sentences in sentences_by_chapters:
+        # Process every chapter by going through its sentences
+        processed_words_by_chapter = []
+        for sentence in sentences:
+            # Process every sentence within the chapter into a list of words
+            processed_sentence = _preprocess_text(sentence)
+            processed_words_by_chapter.append(processed_sentence)
+        processed_words_by_chapters.append((header, processed_words_by_chapter))
+    return processed_words_by_chapters
+
+
+def _preprocess_text(raw_text: str) -> Sequence[str]:
+    text = raw_text.lower()
+    text = _remove_punctuation(text)
+    tokens = _tokenize_text(text, nltk.tokenize.word_tokenize)
+    tokens_without_stopwords = _remove_stopwords(tokens, _STOP_WORDS)
+    # stemmed_tokens = _stemming(tokens_without_stopwords, nltk.PorterStemmer())
+    lemmatized_tokens = _lemmatize_tokens(tokens_without_stopwords)
+    return lemmatized_tokens
+
+
+def _preprocess_words(words: Sequence[str]) -> Sequence[str]:
+    processed_words = []
+    for word in words:
+        processed_word = word.lower()
+        processed_word = _remove_punctuation(processed_word)
+        # TODO: Sometimes named entities happen to be stopwords for some reason
+        # processed_word = _remove_stopwords([processed_word], _STOP_WORDS)[0]
+        processed_word = _lemmatize_tokens([processed_word])[0]
+        processed_words.append(processed_word)
+    return processed_words
+
+
 def _remove_punctuation(text: str) -> str:
     return "".join([c for c in text if c not in string.punctuation])
 
@@ -172,12 +219,12 @@ def _remove_stopwords(tokens: Sequence[str], wordlist: Sequence[str]) -> Sequenc
     return [w for w in tokens if w not in wordlist]
 
 
-def _sentences_by_chapters(texts_by_chapters: Dict[str, str]) -> Dict[str, Sequence[str]]:
-    """Turns a chapter_header - chapter_text representation into
-    chapter_header - list_of_chapter_text_words"""
-    sentences_by_chapters = dict()
-    for chapter in texts_by_chapters.keys():
-        sentences_by_chapters[chapter] = _tokenize_sentences(texts_by_chapters[chapter])
+def _sentences_by_chapters(texts_by_chapters: Sequence[Tuple[str, str]]) -> Sequence[Tuple[str, Sequence[str]]]:
+    """Turns a (chapter_header, chapter_text) representation into
+    (chapter_header, list_of_chapter_text_words)."""
+    sentences_by_chapters = []
+    for header, chapter in texts_by_chapters:
+        sentences_by_chapters.append((header, _tokenize_sentences(chapter)))
     return sentences_by_chapters
 
 
@@ -255,27 +302,22 @@ def _summarize_for_word(raw_sentences: Sequence[str],
     return summary_sentence_candidate
 
 
-def _texts_by_chapters(html: str, titles: Sequence[str]) -> Dict[str, str]:
-    """Returns a dictionary with titles as keys and str text blocks as values."""
-    texts = dict()
-    for title in titles:
-        chapter = _chapter_from_html(html, title)
+def _texts_by_chapters(html: str, headers: Sequence[str]) -> Sequence[Tuple[str, str]]:
+    """Returns a sequence of (header, text block)."""
+    texts = []
+    for header in headers:
+        chapter = _chapter_from_html(html, header)
         if chapter is not None:
-            texts[title] = chapter
+            texts.append((header, chapter))
     return texts
 
 
-def _text_from_html(html: str) -> str:
-    soup = BeautifulSoup(html, "html.parser")
-    return soup.get_text()
-
-
-def _titles_from_html(html: str) -> Sequence[str]:
-    """Returns the headers as a list of strings."""
+def _title_from_html(html: str) -> str:
+    """Returns the title of the page."""
     soup = BeautifulSoup(html, "html.parser")
     # Get the title(s)
-    titles = [a.get_text() for a in soup.find_all("title")]
-    return titles
+    title = soup.find("title").get_text()
+    return title
 
 
 def _tokenize_sentences(text: str) -> Sequence[str]:
