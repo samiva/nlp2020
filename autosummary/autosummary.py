@@ -68,13 +68,18 @@ def _chapter_from_html(html: str, chapter_header: str) -> Optional[str]:
                 return None
 
 
-def _freq_dist_for_word_lists(processed_wordlists_by_chapters: Sequence[Tuple[str, Sequence[Sequence[str]]]]) -> FreqDist:
+def _freq_dist_for_word_lists(processed_wordlists_by_chapters: Sequence[Tuple[str, Sequence[Sequence[str]]]],
+                              filter_words: Optional[Sequence[str]] = None) -> FreqDist:
     """Turn the list of (header, wordlist) representation into a list of words.
-    Run the word frequency distribution for these words."""
+    Run the word frequency distribution for these words. If a filter wordlist is
+    given, filter out those words from the included words."""
     words = []
     for header, sentences in processed_wordlists_by_chapters:
         for sentence in sentences:
             # Gather up a list of words
+            if filter_words is not None:
+                # Filter is specified. Filter out the specified words.
+                sentence = list(filter(lambda x: x not in filter_words, sentence))
             words.extend(sentence)
     return _word_frequency_distribution(words)
 
@@ -151,16 +156,28 @@ def main():
     processed_wordlists_by_chapters = _preprocess_sentences(sentences_by_chapters)
     _logger.debug("PROCESSED LISTS OF WORDS BY CHAPTERS: {}".format(processed_wordlists_by_chapters))
 
-    # Frequency distribution
-    freq_dist = _freq_dist_for_word_lists(processed_wordlists_by_chapters)
-    _plot_frequency_distribution(freq_dist)
-
-    title = (title_raw, _tokenize_text(title_raw.lower(), nltk.tokenize.word_tokenize))
+    # Preprocessed named entities
     processed_named_ents = _named_entities_from_text_chapters(texts_by_chapters,
                                                               _NAMED_ENTITY_TAGS)
     _logger.info("PROCESSED NAMED ENTITIES: {}".format(processed_named_ents))
+
+    # Frequency distribution
+    freq_dist = _freq_dist_for_word_lists(processed_wordlists_by_chapters,
+                                          processed_named_ents)
+    _plot_frequency_distribution(freq_dist)
+
+    # Title representation (raw, preprocessed)
+    title = (title_raw, _tokenize_text(title_raw.lower(), nltk.tokenize.word_tokenize))
+
+    # Highest frequency words
     high_freq_words = _highest_freq_words(freq_dist, word_count)
     _logger.info("HIGH FREQ WORDS: {}".format(high_freq_words))
+
+    for word in high_freq_words:
+        # Debug check: Did the named entity filtering work?
+        if word in processed_named_ents:
+            raise ValueError("Named entity found from high freq words: '{}'.".format(word))
+
     summary = _summarize(sentences_by_chapters,
                          title,
                          processed_wordlists_by_chapters,
