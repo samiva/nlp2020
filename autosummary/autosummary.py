@@ -10,7 +10,7 @@ import re
 import string
 import urllib.request
 
-from typing import Dict, Sequence, Tuple, Optional
+from typing import Sequence, Tuple, List, Optional
 
 import matplotlib.pyplot
 import nltk.tokenize
@@ -31,7 +31,10 @@ _UNWANTED_CHAPTERS = ("REFERENCES",
                       "LIST OF REFERENCES",
                       "CITATIONS",
                       "APPENDIX",
-                      "APPENDIXES")
+                      "APPENDIXES",
+                      "TABLE OF CONTENTS",
+                      "CONTENTS",
+                      )
 
 
 def _argument_parser() -> argparse.ArgumentParser:
@@ -84,7 +87,15 @@ def _get_raw_source(type_: str, path: str) -> str:
         return contents
 
     def _read_url(url: str) -> str:
-        return urllib.request.urlopen(url).read()
+        # TODO: Proxy?
+        hdr = {'User-Agent': 'Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:81.0) Gecko/20100101 Firefox/81.0',
+                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+                'Accept-Charset': 'ISO-8859-1,utf-8;q=0.7,*;q=0.3',
+                'Accept-Encoding': 'none',
+                'Accept-Language': 'en-US,en;q=0.8',
+                'Connection': 'keep-alive'}
+        request = urllib.request.Request(url=url, headers=hdr)
+        return urllib.request.urlopen(request).read()
 
     # Specifies the handler functions for different source types
     source_handler = {
@@ -275,9 +286,10 @@ def _summarize(raw_sentences: Sequence[Tuple[str, Sequence[str]]],
         index_chapter, index_sentence = summary_index
         summary_sentences.append(((index_chapter, index_sentence), summary_sentence))
     summary_sentences.sort()
-    if title[0] in summary_sentences:
+    # TODO: Fix
+    """if ((-1, -1), title[0]) in summary_sentences:
         # Title is (-1, -1) so it's always the first one
-        summary_sentences[0] = summary_sentences.upper() + "\n\n"
+        summary_sentences[0][1][0] = summary_sentences[0][1][0].upper() + "\n\n"""
     return " ".join([a[1] for a in summary_sentences])
 
 
@@ -286,8 +298,8 @@ def _summarize_for_word(raw_sentences: Sequence[Tuple[str, Sequence[str]]],
                         processed_sentences: Sequence[Tuple[str, Sequence[Sequence[str]]]],
                         word: str,
                         named_ents: Sequence[str],
-                        already_selected: Sequence[Tuple[Tuple[int, int], str]])\
-        -> Optional[Tuple[Tuple[int, int], Sequence[str]]]:
+                        already_selected: List[Tuple[Tuple[int, int], str]])\
+        -> Optional[Tuple[Tuple[int, int], str]]:
     summary_sentence_candidate = None
     already_selected_indexes = [a[0] for a in already_selected]
     if (-1, -1) not in already_selected_indexes:
