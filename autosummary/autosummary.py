@@ -303,34 +303,35 @@ def _summarize_for_word(raw_sentences: Sequence[Tuple[str, Sequence[str]]],
     summary_sentence_candidate = None
     already_selected_indexes = [a[0] for a in already_selected]
     if (-1, -1) not in already_selected_indexes:
-        # Title is not yet added (-1 is considered the title)
+        # Title is not yet added. The index (-1, -1) is considered the title.
         if word in title[1]:
             return (-1, -1), title[0]
 
     for i, (chapter_header, sentences) in enumerate(processed_sentences):
         # i for indexing sentences: Order of summary sentences!
         for j, sentence in enumerate(sentences):
-            if word in sentence:
-                if chapter_header.upper() == "ABSTRACT":
-                    # High freq word in a sentence within abstract
-                    if (i, j) not in already_selected_indexes:
-                        # The sentence is not yet in the summary, add it!
-                        _logger.info("SUMMARY - SENTENCE IN ABSTRACT")
-                        return (i, j), raw_sentences[i][1][j]
-                if _named_entity_in_sentence(sentence, named_ents):
-                    # High freq word and named entity in the sentence
-                    if (i, j) not in already_selected_indexes:
-                        # The sentence is not yet in the summary, add it!
-                        _logger.info("SUMMARY - SENTENCE CONTAINS NAMED ENTITY")
-                        return (i, j), raw_sentences[i][1][j]
-                if (i, j) not in already_selected_indexes and summary_sentence_candidate is None:
-                    # No "First sentence not in title/abstract that doesn't contain
-                    # named entity" - candidate currently. This is the one.
-                    summary_sentence_candidate = (i, j), raw_sentences[i][1][j]
+            if word not in sentence:
+                # No high freq word in the sentence, skip it!
+                continue
+            if (i, j) in already_selected_indexes:
+                # The sentence is selected already, skip it!
+                continue
+            if chapter_header.upper() == "ABSTRACT":
+                # High freq word in a sentence within abstract, add it!
+                _logger.info("SUMMARY - SENTENCE IN ABSTRACT")
+                return (i, j), raw_sentences[i][1][j]
+            if _named_entity_in_sentence(sentence, named_ents):
+                # High freq word and named entity in the sentence, add it!
+                _logger.info("SUMMARY - SENTENCE CONTAINS NAMED ENTITY")
+                return (i, j), raw_sentences[i][1][j]
+            if summary_sentence_candidate is None:
+                # No "First sentence not in abstract that doesn't contain a
+                # named entity" - candidate currently. This is the one.
+                summary_sentence_candidate = (i, j), raw_sentences[i][1][j]
 
     # There was no high freq word in title/abstract and no sentence contained
     # both a high freq word and a named entity. Returning the first not yet
-    # included sentence that contained a high freq word.
+    # included sentence that contained a high freq word (if it exists).
     return summary_sentence_candidate
 
 
