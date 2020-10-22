@@ -261,19 +261,19 @@ def _stemming(tokens: Sequence[str], stemmer) -> Sequence[str]:
 def _summarize(raw_sentences: Sequence[Tuple[str, Sequence[str]]],
                title: Tuple[str, Sequence[str]],
                processed_sentences: Sequence[Tuple[str, Sequence[Sequence[str]]]],
-               high_freq_words: Sequence[str],
+               keywords: Sequence[str],
                named_ents: Sequence[str]) -> Sequence[str]:
     """
     :param raw_sentences: Unprocessed sentences grouped by header
     :param title: raw title and processed title (as sequence of words)
     :param processed_sentences: Processed sentences split into words and grouped by header
-    :param high_freq_words: List of processed high frequency words
+    :param keywords: List of processed high frequency words
     :param named_ents: List of processed named entities
     :return:
     """
     # Sentences as ((index, index2), strings) tuple
     summary_sentences = []
-    for word in high_freq_words:
+    for word in keywords:
         result = _summarize_for_word(raw_sentences,
                                      title,
                                      processed_sentences,
