@@ -328,27 +328,28 @@ def _summarize_for_word(raw_sentences: Sequence[Tuple[str, Sequence[str]]],
         # i for indexing sentences: Order of summary sentences!
         for j, sentence in enumerate(sentences):
             if word not in sentence:
-                # No high freq word in the sentence, skip it!
+                # No keyword in the sentence, skip it!
                 continue
             if (i, j) in already_selected_indexes:
                 # The sentence is selected already, skip it!
                 continue
             if chapter_header.upper() == "ABSTRACT":
-                # High freq word in a sentence within abstract, add it!
-                _logger.info("SUMMARY - SENTENCE IN ABSTRACT")
+                # Keyword in a sentence within abstract, add it!
+                _logger.info("SUMMARY - KEYWORD IN ABSTRACT SENTENCE")
                 return (i, j), raw_sentences[i][1][j]
             if _named_entity_in_sentence(sentence, named_ents):
-                # High freq word and named entity in the sentence, add it!
-                _logger.info("SUMMARY - SENTENCE CONTAINS NAMED ENTITY")
+                # Keyword and named entity in the sentence, add it!
+                _logger.info("SUMMARY - KEYWORD AND NAMED ENTITY IN A SENTENCE")
                 return (i, j), raw_sentences[i][1][j]
             if summary_sentence_candidate is None:
                 # No "First sentence not in abstract that doesn't contain a
                 # named entity" - candidate currently. This is the one.
                 summary_sentence_candidate = (i, j), raw_sentences[i][1][j]
 
-    # There was no high freq word in title/abstract and no sentence contained
-    # both a high freq word and a named entity. Returning the first not yet
-    # included sentence that contained a high freq word (if it exists).
+    # The keyword was not in title/abstract and no sentence contained both the
+    # keyword and a named entity. Returning the first not yet included sentence
+    # that contained the keyword (if it exists).
+    _logger.info("SUMMARY - FIRST SENTENCE WITH KEYWORD")
     return summary_sentence_candidate
 
 
