@@ -19,6 +19,7 @@ import spacy
 from bs4 import BeautifulSoup
 from nltk.probability import FreqDist
 from nltk.corpus import stopwords
+from rake_nltk import Rake
 
 
 _logger = logging.getLogger(__name__)
@@ -51,6 +52,12 @@ def _argument_parser() -> argparse.ArgumentParser:
                         type=int,
                         default=10,
                         help="Number of high frequency words to include for the summarization.")
+    parser.add_argument("-k", "--keyword",
+                        dest="keyword",
+                        type=str,
+                        choices=["freq", "rake"],
+                        default="freq",
+                        help="Specifies which keyword extraction method is used.")
     return parser
 
 
@@ -125,6 +132,30 @@ def _highest_freq_words(freq_dist: FreqDist, word_count: int) -> Sequence[str]:
     return [a[0] for a in freq_dist.most_common(word_count)]
 
 
+def _keywords_by_rake(texts_by_chapters: Sequence[Tuple[str, str]]) -> Sequence[str]:
+    complete_text_by_chapters = []
+    for header, text_block in texts_by_chapters:
+        complete_text_by_chapters.append(text_block)
+
+    r = Rake(stopwords=_STOP_WORDS,
+             punctuations=_PUNCTUATION,
+             max_length=1,
+             min_length=1)
+    # Extract keywords from the text_block
+    r.extract_keywords_from_sentences(complete_text_by_chapters)
+
+    # Get list of ranked keywords (highest-lowest)
+    keywords = r.ranked_phrases
+    _logger.debug("Raw RAKE keywords: {}...".format(keywords[:20]))
+
+    # Preprocess the keywords
+    keywords = _preprocess_words(keywords)
+    keywords = _remove_duplicates(keywords)
+
+    # Return list of preprocessed keywords in ranked order
+    return keywords
+
+
 def _lemmatize_tokens(tokens: Sequence[str]) -> Sequence[str]:
     wnl = nltk.WordNetLemmatizer()
     return [wnl.lemmatize(t) for t in tokens]
@@ -137,6 +168,7 @@ def main():
     source_type = _parsed_args.source_type
     source_path = _parsed_args.source_path
     word_count = _parsed_args.word_count
+    keyword_extract_method = _parsed_args.keyword
     _logger.debug("Using source '{}' ({})".format(source_path, source_type.upper()))
 
     raw_html = _get_raw_source(source_type, source_path)
@@ -169,19 +201,27 @@ def main():
     # Title representation (raw, preprocessed)
     title = (title_raw, _tokenize_text(title_raw.lower(), nltk.tokenize.word_tokenize))
 
-    # Highest frequency words
-    high_freq_words = _highest_freq_words(freq_dist, word_count)
-    _logger.info("HIGH FREQ WORDS: {}".format(high_freq_words))
+    if keyword_extract_method == "freq":
+        # Use words with highest frequency distribution for keyword extraction
+        keywords = _highest_freq_words(freq_dist, word_count)
+        for word in keywords:
+            # Debug check: Did the named entity filtering work?
+            if word in processed_named_ents:
+                raise ValueError("Named entity found from high freq words: '{}'.".format(word))
 
-    for word in high_freq_words:
-        # Debug check: Did the named entity filtering work?
-        if word in processed_named_ents:
-            raise ValueError("Named entity found from high freq words: '{}'.".format(word))
+    elif keyword_extract_method == "rake":
+        # Use RAKE for keyword extraction
+        keywords = _keywords_by_rake(texts_by_chapters)[:word_count]
+    else:
+        # This option should never be reached
+        msg = "Invalid keyword extraction method: '{}'".format(keyword_extract_method)
+        raise ValueError(msg)
 
+    _logger.info("KEYWORDS: {}".format(keywords))
     summary = _summarize(sentences_by_chapters,
                          title,
                          processed_wordlists_by_chapters,
-                         high_freq_words,
+                         keywords,
                          processed_named_ents)
     _logger.info("SUMMARY: {}".format(summary))
 
@@ -252,6 +292,14 @@ def _preprocess_words(words: Sequence[str]) -> Sequence[str]:
         processed_word = _lemmatize_tokens([processed_word])[0]
         processed_words.append(processed_word)
     return processed_words
+
+
+def _remove_duplicates(words: Sequence[str]) -> Sequence[str]:
+    result = []
+    for w in words:
+        if w not in result:
+            result.append(w)
+    return result
 
 
 def _remove_punctuation(text: str) -> str:
