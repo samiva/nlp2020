@@ -58,6 +58,11 @@ def _argument_parser() -> argparse.ArgumentParser:
                         choices=["freq", "rake"],
                         default="freq",
                         help="Specifies which keyword extraction method is used.")
+    parser.add_argument("--ne-filter",
+                        dest="ne_filter",
+                        action="store_true",
+                        default=False,
+                        help="Filter out named entities from the keywords.")
     return parser
 
 
@@ -132,7 +137,8 @@ def _highest_freq_words(freq_dist: FreqDist, word_count: int) -> Sequence[str]:
     return [a[0] for a in freq_dist.most_common(word_count)]
 
 
-def _keywords_by_rake(texts_by_chapters: Sequence[Tuple[str, str]]) -> Sequence[str]:
+def _keywords_by_rake(texts_by_chapters: Sequence[Tuple[str, str]],
+                      filter_words: Optional[Sequence[str]] = None) -> Sequence[str]:
     complete_text_by_chapters = []
     for header, text_block in texts_by_chapters:
         complete_text_by_chapters.append(text_block)
@@ -152,7 +158,10 @@ def _keywords_by_rake(texts_by_chapters: Sequence[Tuple[str, str]]) -> Sequence[
     keywords = _preprocess_words(keywords)
     keywords = _remove_duplicates(keywords)
 
-    # Return list of preprocessed keywords in ranked order
+    if filter_words is not None:
+        # Filter is specified. Filter out the specified words from the keywords.
+        keywords = list(filter(lambda x: x not in filter_words, keywords))
+    # Return (possibly filtered) list of preprocessed keywords in ranked order
     return keywords
 
 
@@ -169,6 +178,7 @@ def main():
     source_path = _parsed_args.source_path
     word_count = _parsed_args.word_count
     keyword_extract_method = _parsed_args.keyword
+    ne_filter = _parsed_args.ne_filter
     _logger.debug("Using source '{}' ({})".format(source_path, source_type.upper()))
 
     raw_html = _get_raw_source(source_type, source_path)
@@ -194,8 +204,12 @@ def main():
     _logger.info("PROCESSED NAMED ENTITIES: {}".format(processed_named_ents))
 
     # Frequency distribution
-    freq_dist = _freq_dist_for_word_lists(processed_wordlists_by_chapters,
-                                          processed_named_ents)
+    if ne_filter:
+        # Filter out named entities from the freq dist
+        freq_dist = _freq_dist_for_word_lists(processed_wordlists_by_chapters, processed_named_ents)
+    else:
+        # Do not filter out the named entities from the freq dist
+        freq_dist = _freq_dist_for_word_lists(processed_wordlists_by_chapters)
     _plot_frequency_distribution(freq_dist)
 
     # Title representation (raw, preprocessed)
@@ -204,20 +218,26 @@ def main():
     if keyword_extract_method == "freq":
         # Use words with highest frequency distribution for keyword extraction
         keywords = _highest_freq_words(freq_dist, word_count)
-        for word in keywords:
-            # Debug check: Did the named entity filtering work?
-            if word in processed_named_ents:
-                raise ValueError("Named entity found from high freq words: '{}'.".format(word))
 
     elif keyword_extract_method == "rake":
         # Use RAKE for keyword extraction
-        keywords = _keywords_by_rake(texts_by_chapters)[:word_count]
+        if ne_filter:
+            keywords = _keywords_by_rake(texts_by_chapters,
+                                         processed_named_ents)[:word_count]
+        else:
+            keywords = _keywords_by_rake(texts_by_chapters)[:word_count]
     else:
         # This option should never be reached
         msg = "Invalid keyword extraction method: '{}'".format(keyword_extract_method)
         raise ValueError(msg)
 
     _logger.info("KEYWORDS: {}".format(keywords))
+    if ne_filter:
+        # Named Entity filtering is used for the keywords
+        for word in keywords:
+            # Debug check: Did the named entity filtering work?
+            if word in processed_named_ents:
+                raise ValueError("Found named entity from high freq words: '{}'.".format(word))
     summary = _summarize(sentences_by_chapters,
                          title,
                          processed_wordlists_by_chapters,
