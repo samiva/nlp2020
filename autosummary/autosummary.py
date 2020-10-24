@@ -10,7 +10,7 @@ import re
 import string
 import urllib.request
 
-from typing import Sequence, Tuple, List, Optional
+from typing import Any, Dict, Sequence, Tuple, List, Optional
 
 import matplotlib.pyplot
 import nltk.tokenize
@@ -78,6 +78,50 @@ def _chapter_from_html(html: str, chapter_header: str) -> Optional[str]:
                 # The element object didn't have the get_text() attribute meaning
                 # it's not likely a text chapter anyway.
                 return None
+
+
+def _element_count_map(elem_list: List[Any]) -> Dict[Any, int]:
+    """Create a dictionary of VALUE - COUNT pairs for every unique element within
+    a list of elements. The count indicates the number of times the specific
+    element appears in the list."""
+    count_map = dict()
+    for elem in elem_list:
+        if elem in count_map:
+            # If the element has been already added to the dict, increase the count.
+            count_map[elem] += 1
+        else:
+            # The element wasn't yet in the dict, add it there.
+            count_map[elem] = 1
+    return count_map
+
+
+def _element_overlap(a: List[Any], b: List[Any]) -> float:
+    """Calculate the number of common elements between two lists of elements."""
+    overlap = 0
+    total = len(a + b)
+    # Create VALUE - COUNT maps for the lists
+    a_map = _element_count_map(a)
+    b_map = _element_count_map(b)
+    for elem in a_map:
+        if elem in b_map:
+            # If an element that appears in a also appears in b, add the lower
+            # count (meaning the count of common appearances) to the number of
+            # overlaps.
+            overlap += min(a_map[elem], b_map[elem])
+    return overlap / total
+
+
+def _evaluate_summary(summary: str, ref_summary: str) -> Tuple[float, float]:
+    # ROUGE 2
+    summary_bigrams = nltk.bigrams(summary)
+    ref_summary_bigrams = nltk.bigrams(ref_summary)
+    rouge2 = _element_overlap(summary_bigrams, ref_summary_bigrams)
+
+    # ROUGE 3
+    summary_trigrams = nltk.trigrams(summary)
+    ref_summary_trigrams = nltk.trigrams(ref_summary)
+    rouge3 = _element_overlap(summary_trigrams, ref_summary_trigrams)
+    return rouge2, rouge3
 
 
 def _freq_dist_for_word_lists(processed_wordlists_by_chapters: Sequence[Tuple[str, Sequence[Sequence[str]]]],
