@@ -217,76 +217,15 @@ def _lemmatize_tokens(tokens: Sequence[str]) -> Sequence[str]:
 def main():
     logging.basicConfig(level=logging.DEBUG,
                         format=_LOGGING_FORMAT)
-    _parsed_args = _argument_parser().parse_args()
-    source_type = _parsed_args.source_type
-    source_path = _parsed_args.source_path
-    word_count = _parsed_args.word_count
-    keyword_extract_method = _parsed_args.keyword
-    ne_filter = _parsed_args.ne_filter
-    _logger.debug("Using source '{}' ({})".format(source_path, source_type.upper()))
-
-    raw_html = _get_raw_source(source_type, source_path)
-    # Get the titles & headers
-    title_raw = _title_from_html(raw_html)
-    headers_raw = _headers_from_html(raw_html)
-    _logger.debug("HEADERS: {}".format(headers_raw))
-    texts_by_chapters = _texts_by_chapters(raw_html, headers_raw)
-    sentences_by_chapters = _sentences_by_chapters(texts_by_chapters)
-    _logger.debug("SENTENCES BY CHAPTERS: {}".format(sentences_by_chapters))
-
-    if sentences_by_chapters is None:
-        _logger.info("No text found.")
-        return
-
-    # Preprocessing
-    processed_wordlists_by_chapters = _preprocess_sentences(sentences_by_chapters)
-    _logger.debug("PROCESSED LISTS OF WORDS BY CHAPTERS: {}".format(processed_wordlists_by_chapters))
-
-    # Preprocessed named entities
-    processed_named_ents = _named_entities_from_text_chapters(texts_by_chapters,
-                                                              _NAMED_ENTITY_TAGS)
-    _logger.info("PROCESSED NAMED ENTITIES: {}".format(processed_named_ents))
-
-    # Frequency distribution
-    if ne_filter:
-        # Filter out named entities from the freq dist
-        freq_dist = _freq_dist_for_word_lists(processed_wordlists_by_chapters, processed_named_ents)
-    else:
-        # Do not filter out the named entities from the freq dist
-        freq_dist = _freq_dist_for_word_lists(processed_wordlists_by_chapters)
-    _plot_frequency_distribution(freq_dist)
-
-    # Title representation (raw, preprocessed)
-    title = (title_raw, _tokenize_text(title_raw.lower(), nltk.tokenize.word_tokenize))
-
-    if keyword_extract_method == "freq":
-        # Use words with highest frequency distribution for keyword extraction
-        keywords = _highest_freq_words(freq_dist, word_count)
-
-    elif keyword_extract_method == "rake":
-        # Use RAKE for keyword extraction
-        if ne_filter:
-            keywords = _keywords_by_rake(texts_by_chapters,
-                                         processed_named_ents)[:word_count]
-        else:
-            keywords = _keywords_by_rake(texts_by_chapters)[:word_count]
-    else:
-        # This option should never be reached
-        msg = "Invalid keyword extraction method: '{}'".format(keyword_extract_method)
-        raise ValueError(msg)
-
-    _logger.info("KEYWORDS: {}".format(keywords))
-    if ne_filter:
-        # Named Entity filtering is used for the keywords
-        for word in keywords:
-            # Debug check: Did the named entity filtering work?
-            if word in processed_named_ents:
-                raise ValueError("Found named entity from high freq words: '{}'.".format(word))
-    summary = _summarize(sentences_by_chapters,
-                         title,
-                         processed_wordlists_by_chapters,
-                         keywords,
-                         processed_named_ents)
+    parsed_args = _argument_parser().parse_args()
+    config = {
+        "source_type": parsed_args.source_type,
+        "source_path": parsed_args.source_path,
+        "word_count": parsed_args.word_count,
+        "keyword": parsed_args.keyword,
+        "ne_filter": parsed_args.ne_filter,
+    }
+    summary = _summary(config)
     _logger.info("SUMMARY: {}".format(summary))
 
 
@@ -387,11 +326,80 @@ def _stemming(tokens: Sequence[str], stemmer) -> Sequence[str]:
     return [stemmer.stem(w) for w in tokens]
 
 
-def _summarize(raw_sentences: Sequence[Tuple[str, Sequence[str]]],
-               title: Tuple[str, Sequence[str]],
-               processed_sentences: Sequence[Tuple[str, Sequence[Sequence[str]]]],
-               keywords: Sequence[str],
-               named_ents: Sequence[str]) -> Sequence[str]:
+def _summary(config: Dict[str, Any]) -> Sequence[str]:
+    source_type = config["source_type"]
+    source_path = config["source_path"]
+    word_count = config["word_count"]
+    keyword_extract_method = config["keyword"]
+    ne_filter = config["ne_filter"]
+
+    _logger.debug("Using source '{}' ({})".format(source_path, source_type.upper()))
+
+    raw_html = _get_raw_source(source_type, source_path)
+    # Get the titles & headers
+    title_raw = _title_from_html(raw_html)
+    headers_raw = _headers_from_html(raw_html)
+    _logger.debug("HEADERS: {}".format(headers_raw))
+    texts_by_chapters = _texts_by_chapters(raw_html, headers_raw)
+    sentences_by_chapters = _sentences_by_chapters(texts_by_chapters)
+    _logger.debug("SENTENCES BY CHAPTERS: {}".format(sentences_by_chapters))
+
+    # Preprocessing
+    processed_wordlists_by_chapters = _preprocess_sentences(sentences_by_chapters)
+    _logger.debug("PROCESSED LISTS OF WORDS BY CHAPTERS: {}".format(processed_wordlists_by_chapters))
+
+    # Preprocessed named entities
+    processed_named_ents = _named_entities_from_text_chapters(texts_by_chapters,
+                                                              _NAMED_ENTITY_TAGS)
+    _logger.info("PROCESSED NAMED ENTITIES: {}".format(processed_named_ents))
+
+    # Frequency distribution
+    if ne_filter:
+        # Filter out named entities from the freq dist
+        freq_dist = _freq_dist_for_word_lists(processed_wordlists_by_chapters, processed_named_ents)
+    else:
+        # Do not filter out the named entities from the freq dist
+        freq_dist = _freq_dist_for_word_lists(processed_wordlists_by_chapters)
+    _plot_frequency_distribution(freq_dist)
+
+    # Title representation (raw, preprocessed)
+    title = (title_raw, _tokenize_text(title_raw.lower(), nltk.tokenize.word_tokenize))
+
+    if keyword_extract_method == "freq":
+        # Use words with highest frequency distribution for keyword extraction
+        keywords = _highest_freq_words(freq_dist, word_count)
+
+    elif keyword_extract_method == "rake":
+        # Use RAKE for keyword extraction
+        if ne_filter:
+            keywords = _keywords_by_rake(texts_by_chapters,
+                                         processed_named_ents)[:word_count]
+        else:
+            keywords = _keywords_by_rake(texts_by_chapters)[:word_count]
+    else:
+        # This option should never be reached
+        msg = "Invalid keyword extraction method: '{}'".format(keyword_extract_method)
+        raise ValueError(msg)
+
+    _logger.info("KEYWORDS: {}".format(keywords))
+    if ne_filter:
+        # Named Entity filtering is used for the keywords
+        for word in keywords:
+            # Debug check: Did the named entity filtering work?
+            if word in processed_named_ents:
+                raise ValueError("Found named entity from high freq words: '{}'.".format(word))
+    return _summary_build(sentences_by_chapters,
+                          title,
+                          processed_wordlists_by_chapters,
+                          keywords,
+                          processed_named_ents)
+
+
+def _summary_build(raw_sentences: Sequence[Tuple[str, Sequence[str]]],
+                   title: Tuple[str, Sequence[str]],
+                   processed_sentences: Sequence[Tuple[str, Sequence[Sequence[str]]]],
+                   keywords: Sequence[str],
+                   named_ents: Sequence[str]) -> Sequence[str]:
     """
     :param raw_sentences: Unprocessed sentences grouped by header
     :param title: raw title and processed title (as sequence of words)
