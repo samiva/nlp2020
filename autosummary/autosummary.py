@@ -414,10 +414,14 @@ def _summarize_for_word(raw_sentences: Sequence[Tuple[str, Sequence[str]]],
                 # named entity" - candidate currently. This is the one.
                 summary_sentence_candidate = (i, j), raw_sentences[i][1][j]
 
+    if summary_sentence_candidate is None:
+        _logger.info("SUMMARY - NO CANDIDATE FOUND FOR '{}'".format(word))
+    else:
+        _logger.info("SUMMARY - FIRST SENTENCE WITH KEYWORD")
+
     # The keyword was not in title/abstract and no sentence contained both the
     # keyword and a named entity. Returning the first not yet included sentence
     # that contained the keyword (if it exists).
-    _logger.info("SUMMARY - FIRST SENTENCE WITH KEYWORD")
     return summary_sentence_candidate
 
 
