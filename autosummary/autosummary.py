@@ -21,6 +21,8 @@ from nltk.probability import FreqDist
 from nltk.corpus import stopwords
 from rake_nltk import Rake
 
+import sumy_interface as sumy_interface
+
 
 _logger = logging.getLogger(__name__)
 _LOGGING_FORMAT = "%(asctime)s %(module)s [%(levelname)s]: %(message)s"
@@ -63,6 +65,11 @@ def _argument_parser() -> argparse.ArgumentParser:
                         action="store_true",
                         default=False,
                         help="Filter out named entities from the keywords.")
+    parser.add_argument("--sumy",
+                        dest="sumy",
+                        action="store_true",
+                        default=False,
+                        help="Run summarization on sumy's summarizers as well.")
     return parser
 
 
@@ -227,6 +234,14 @@ def main():
     }
     summary = _summary(config)
     _logger.info("SUMMARY: {}".format(summary))
+    if parsed_args.sumy:
+        sumy_summaries = _summary_sumy(config, sumy_interface.SUMMARIZERS)
+        if sumy_summaries is None:
+            _logger.warning("Extraction of sumy summaries failed.")
+            return
+        _logger.debug(sumy_summaries)
+        for summarizer, sumy_summary in sumy_summaries.items():
+            _logger.info("SUMMARY [{}]: {}".format(summarizer, sumy_summary))
 
 
 def _named_entities_from_text_chapters(texts_by_chapters: Sequence[Tuple[str, str]],
@@ -485,6 +500,26 @@ def _summary_sentence_for_word(raw_sentences: Sequence[Tuple[str, Sequence[str]]
     # keyword and a named entity. Returning the first not yet included sentence
     # that contained the keyword (if it exists).
     return summary_sentence_candidate
+
+
+def _summary_sumy(config: Dict[str, Any],
+                  summarizers: Sequence[str],
+                  summary_length: int = 10) -> Optional[Dict[str, str]]:
+    """Run specified sumy summarizers for the specified document. Return a dictionary
+    of summarizer_name: output_summary key: value pairs."""
+    if config["source_type"] != "url":
+        # TODO: Support for local files
+        msg = "Source type '{}' not supported for sumy summaries.".format(config["source_type"])
+        _logger.warning(msg)
+        return None
+
+    # Run summarization on sumy's summarizers
+    sumy_summaries = dict()
+    for summarizer in summarizers:
+        sumy_summaries[summarizer] = sumy_interface.summarize(config["source_path"],
+                                                              summarizer,
+                                                              summary_length)
+    return sumy_summaries
 
 
 def _texts_by_chapters(html: str, headers: Sequence[str]) -> Sequence[Tuple[str, str]]:
