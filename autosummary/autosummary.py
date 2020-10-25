@@ -326,7 +326,7 @@ def _stemming(tokens: Sequence[str], stemmer) -> Sequence[str]:
     return [stemmer.stem(w) for w in tokens]
 
 
-def _summary(config: Dict[str, Any]) -> Sequence[str]:
+def _summary(config: Dict[str, Any]) -> str:
     source_type = config["source_type"]
     source_path = config["source_path"]
     word_count = config["word_count"]
@@ -399,7 +399,7 @@ def _summary_build(raw_sentences: Sequence[Tuple[str, Sequence[str]]],
                    title: Tuple[str, Sequence[str]],
                    processed_sentences: Sequence[Tuple[str, Sequence[Sequence[str]]]],
                    keywords: Sequence[str],
-                   named_ents: Sequence[str]) -> Sequence[str]:
+                   named_ents: Sequence[str]) -> str:
     """
     :param raw_sentences: Unprocessed sentences grouped by header
     :param title: raw title and processed title (as sequence of words)
@@ -411,12 +411,12 @@ def _summary_build(raw_sentences: Sequence[Tuple[str, Sequence[str]]],
     # Sentences as ((index, index2), strings) tuple
     summary_sentences = []
     for word in keywords:
-        result = _summarize_for_word(raw_sentences,
-                                     title,
-                                     processed_sentences,
-                                     word,
-                                     named_ents,
-                                     summary_sentences)
+        result = _summary_sentence_for_word(raw_sentences,
+                                            title,
+                                            processed_sentences,
+                                            word,
+                                            named_ents,
+                                            summary_sentences)
         if result is None:
             continue
         summary_index, summary_sentence = result
@@ -430,13 +430,23 @@ def _summary_build(raw_sentences: Sequence[Tuple[str, Sequence[str]]],
     return " ".join([a[1] for a in summary_sentences])
 
 
-def _summarize_for_word(raw_sentences: Sequence[Tuple[str, Sequence[str]]],
-                        title: Tuple[str, Sequence[str]],
-                        processed_sentences: Sequence[Tuple[str, Sequence[Sequence[str]]]],
-                        word: str,
-                        named_ents: Sequence[str],
-                        already_selected: List[Tuple[Tuple[int, int], str]])\
+def _summary_sentence_for_word(raw_sentences: Sequence[Tuple[str, Sequence[str]]],
+                               title: Tuple[str, Sequence[str]],
+                               processed_sentences: Sequence[Tuple[str, Sequence[Sequence[str]]]],
+                               word: str,
+                               named_ents: Sequence[str],
+                               already_selected: List[Tuple[Tuple[int, int], str]]) \
         -> Optional[Tuple[Tuple[int, int], str]]:
+    """Goes through the preprocessed sentences (chapter by chapter) and apply
+    the summarization logic by selecting a sentence for the summary (or not).
+    Return the sentence and it's 2D index (chapter_i, sentence_i) if...
+    * The sentence has not been selected already (check already_selected indexes)
+    * The sentence contains the given keyword and...
+        - is located in the abstract chapter
+        - the sentence also contains a named entity
+    * If no sentence fulfills the previous criteria, select the first (not yet
+    selected) sentence that contains the keyword.
+    * Return none if even this final criteria cannot be fulfilled."""
     summary_sentence_candidate = None
     already_selected_indexes = [a[0] for a in already_selected]
     if (-1, -1) not in already_selected_indexes:
