@@ -6,6 +6,7 @@ the CLI and the actual automatic summarization functionality.
 
 import argparse
 import logging
+import random
 import re
 import string
 import urllib.request
@@ -29,6 +30,12 @@ _LOGGING_FORMAT = "%(asctime)s %(module)s [%(levelname)s]: %(message)s"
 _NAMED_ENTITY_TAGS = ("PERSON", "ORG")
 # string.punctuation doesn't consider these different quotation marks by default
 _PUNCTUATION = string.punctuation + r'“' + r'”'
+_REFERENCE_SUMMARY_FILES = (
+    # TODO: Config.py?
+    "../nlp2020/files/high_abstraction.txt",
+    "../nlp2020/files/low_abstraction.txt",
+    "../nlp2020/files/noise.txt",
+)
 _STOP_WORDS = stopwords.words('english')
 _UNWANTED_CHAPTERS = ("REFERENCES",
                       "LIST OF REFERENCES",
@@ -44,7 +51,7 @@ def _argument_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser()
     parser.add_argument("source_type",
                         type=str,
-                        choices=("url", "file"),
+                        choices=("url", "file", "dataset"),
                         help="Specifies the type of the source_path: URL or filepath.")
     parser.add_argument("source_path",
                         type=str,
@@ -70,6 +77,13 @@ def _argument_parser() -> argparse.ArgumentParser:
                         action="store_true",
                         default=False,
                         help="Run summarization on sumy's summarizers as well.")
+    parser.add_argument("--evaluate",
+                        dest="evaluate",
+                        type=int,
+                        default=0,
+                        help="Run the summarization for the specified number of"
+                             "entries from the CNN/DailyMail dataset. Calculate"
+                             "the ROUGE2 and ROUGE3 for these summaries.")
     return parser
 
 
@@ -102,7 +116,7 @@ def _element_count_map(elem_list: List[Any]) -> Dict[Any, int]:
     return count_map
 
 
-def _element_overlap(a: List[Any], b: List[Any]) -> float:
+def _element_overlap(a: List[Any], b: List[Any]) -> int:
     """Calculate the number of common elements between two lists of elements."""
     overlap = 0
     total = len(a + b)
@@ -115,20 +129,66 @@ def _element_overlap(a: List[Any], b: List[Any]) -> float:
             # count (meaning the count of common appearances) to the number of
             # overlaps.
             overlap += min(a_map[elem], b_map[elem])
-    return overlap / total
+    return overlap
 
 
-def _evaluate_summary(summary: str, ref_summary: str) -> Tuple[float, float]:
+def _evaluation_summaries(config: Dict[str, Any],
+                          count: int,
+                          random_: bool = False) -> Sequence[Tuple[Tuple[int, str], Dict[str, float]]]:
+    # Get a list of the dataset source urls
+    source_paths = _get_raw_source("file", config["source_path"])
+    source_paths = source_paths.split("\n")
+
+    if random_:
+        # Pick random document indexes for the summarization
+        indexes = []
+        for i in range(count):
+            # Select a random index from the available document indexes
+            indexes.append(random.randint(0, len(source_paths) + 1))
+    else:
+        # Pick the indexes from the beginning
+        indexes = [i for i in range(count)]
+    ref_summaries_by_index = ref_summaries_for_indexes(indexes)
+
+    summary_config = config
+    # Dataset sources are stored as urls
+    summary_config["source_type"] = "url"
+    summaries = []
+
+    for i in indexes:
+        # Go through the source_paths in order, get summaries and calculate their
+        # ROUGE2 and ROUGE3 based on the corresponding reference summaries.
+        summary_config["source_path"] = source_paths[i]
+        summary = _summary(summary_config)
+        if i not in ref_summaries_by_index:
+            _logger.warning("No matching index in reference summaries for '{}'".format(i))
+            continue
+        eval_results = _evaluate_summary(summary, ref_summaries_by_index[i])
+        summaries.append(((i, summary), eval_results))
+    return summaries
+
+
+def _evaluate_summary(summary: str, ref_summary: str) -> Dict[str, float]:
     # ROUGE 2
-    summary_bigrams = nltk.bigrams(summary)
-    ref_summary_bigrams = nltk.bigrams(ref_summary)
-    rouge2 = _element_overlap(summary_bigrams, ref_summary_bigrams)
+    summary_bigrams = [a for a in nltk.bigrams(summary)]
+    ref_summary_bigrams = [b for b in nltk.bigrams(ref_summary)]
+    bigram_overlap = _element_overlap(summary_bigrams, ref_summary_bigrams)
+    rouge2_precision = bigram_overlap / len(summary_bigrams)
+    rouge2_recall = bigram_overlap / len(ref_summary_bigrams)
 
     # ROUGE 3
-    summary_trigrams = nltk.trigrams(summary)
-    ref_summary_trigrams = nltk.trigrams(ref_summary)
-    rouge3 = _element_overlap(summary_trigrams, ref_summary_trigrams)
-    return rouge2, rouge3
+    summary_trigrams = [a for a in nltk.trigrams(summary)]
+    ref_summary_trigrams = [b for b in nltk.trigrams(ref_summary)]
+    trigram_overlap = _element_overlap(summary_trigrams, ref_summary_trigrams)
+    rouge3_precision = trigram_overlap / len(summary_trigrams)
+    rouge3_recall = trigram_overlap / len(ref_summary_trigrams)
+    eval_results = {
+        "rouge2-precision": rouge2_precision,
+        "rouge2-recall": rouge2_recall,
+        "rouge3-precision": rouge3_precision,
+        "rouge3-recall": rouge3_recall,
+    }
+    return eval_results
 
 
 def _freq_dist_for_word_lists(processed_wordlists_by_chapters: Sequence[Tuple[str, Sequence[Sequence[str]]]],
@@ -232,6 +292,27 @@ def main():
         "keyword": parsed_args.keyword,
         "ne_filter": parsed_args.ne_filter,
     }
+    if config["source_type"] == "dataset":
+        if parsed_args.evaluate == 0:
+            msg = "Cannot use 'dataset' source type if evaluate count is not specified."
+            _logger.warning(msg)
+            return
+        eval_summaries = _evaluation_summaries(config,
+                                               parsed_args.evaluate,
+                                               random_=False)
+        for eval_ in eval_summaries:
+            doc_id = eval_[0][0]
+            summary_output = eval_[0][1]
+            eval_results = eval_[1]
+            msg = "SUMMARY FOR DOC_{} (ROUGE2: p={:.3f} r={:.3f}) (ROUGE3: p={:.3f} r={:.3f}): {}"
+            _logger.info(msg.format(doc_id,
+                                    eval_results["rouge2-precision"],
+                                    eval_results["rouge2-recall"],
+                                    eval_results["rouge3-precision"],
+                                    eval_results["rouge3-recall"],
+                                    summary_output))
+        return
+
     summary = _summary(config)
     _logger.info("SUMMARY: {}".format(summary))
     if parsed_args.sumy:
@@ -265,6 +346,29 @@ def _named_entity_in_sentence(sentence: Sequence[str],
         if word in named_ents:
             return True
     return False
+
+
+def _parse_ref_summaries(raw_summaries: Sequence[str]) -> Dict[int, Sequence[str]]:
+    """This is more of a scraper currently. There is a strong expectation that
+    indexes and facets are ordered properly."""
+    doc_indexes = []
+    ref_summaries = dict()
+
+    for line in raw_summaries:
+        if line.startswith("idx: "):
+            # Specifies document index
+            doc_indexes.append(int(line[5:]))
+        if line.startswith("Facet-"):
+            # Assume that the line contains reference summary for the latest index.
+            # The summary begins after the ': ', so pick the summary after that.
+            ref_summary = line[line.find(":") + 2:]
+            if doc_indexes[-1] not in ref_summaries:
+                # First facet for the document index
+                ref_summaries[doc_indexes[-1]] = [ref_summary]
+            else:
+                # Facet for the document index already exists, append to it.
+                ref_summaries[doc_indexes[-1]].append(ref_summary)
+    return ref_summaries
 
 
 def _plot_frequency_distribution(fdist: FreqDist) -> None:
@@ -310,6 +414,30 @@ def _preprocess_words(words: Sequence[str]) -> Sequence[str]:
         processed_word = _lemmatize_tokens([processed_word])[0]
         processed_words.append(processed_word)
     return processed_words
+
+
+def _read_reference_summaries() -> Dict[int, str]:
+    ref_summaries = dict()
+    for ref_summary_file in _REFERENCE_SUMMARY_FILES:
+        with open(ref_summary_file, "r") as f:
+            raw_summaries = f.readlines()
+            parsed_summaries = _parse_ref_summaries(raw_summaries)
+            ref_summaries.update(parsed_summaries)
+    return ref_summaries
+
+
+def ref_summaries_for_indexes(wanted_indexes: Sequence[int]) -> Dict[int, str]:
+    ref_summaries_all = _read_reference_summaries()
+    ref_summaries = dict()
+    ref_summary_indexes = ref_summaries_all.keys()
+
+    for i in wanted_indexes:
+        if i not in ref_summary_indexes:
+            _logger.warning("Wanted index '{}' not in reference summary indexes!".format(i))
+            continue
+        # Take only Facet-0!
+        ref_summaries[i] = ref_summaries_all[i][0]
+    return ref_summaries
 
 
 def _remove_duplicates(words: Sequence[str]) -> Sequence[str]:
