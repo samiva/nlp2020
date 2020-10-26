@@ -8,7 +8,6 @@ import argparse
 import logging
 import random
 import re
-import string
 import urllib.request
 
 from typing import Any, Dict, Sequence, Tuple, List, Optional
@@ -19,32 +18,13 @@ import spacy
 
 from bs4 import BeautifulSoup
 from nltk.probability import FreqDist
-from nltk.corpus import stopwords
 from rake_nltk import Rake
 
-import sumy_interface as sumy_interface
+import autosummary.sumy_interface as sumy_interface
+import autosummary.config as mod_config
 
 
 _logger = logging.getLogger(__name__)
-_LOGGING_FORMAT = "%(asctime)s %(module)s [%(levelname)s]: %(message)s"
-_NAMED_ENTITY_TAGS = ("PERSON", "ORG")
-# string.punctuation doesn't consider these different quotation marks by default
-_PUNCTUATION = string.punctuation + r'“' + r'”'
-_REFERENCE_SUMMARY_FILES = (
-    # TODO: Config.py?
-    "../nlp2020/files/high_abstraction.txt",
-    "../nlp2020/files/low_abstraction.txt",
-    "../nlp2020/files/noise.txt",
-)
-_STOP_WORDS = stopwords.words('english')
-_UNWANTED_CHAPTERS = ("REFERENCES",
-                      "LIST OF REFERENCES",
-                      "CITATIONS",
-                      "APPENDIX",
-                      "APPENDIXES",
-                      "TABLE OF CONTENTS",
-                      "CONTENTS",
-                      )
 
 
 def _argument_parser() -> argparse.ArgumentParser:
@@ -119,7 +99,6 @@ def _element_count_map(elem_list: List[Any]) -> Dict[Any, int]:
 def _element_overlap(a: List[Any], b: List[Any]) -> int:
     """Calculate the number of common elements between two lists of elements."""
     overlap = 0
-    total = len(a + b)
     # Create VALUE - COUNT maps for the lists
     a_map = _element_count_map(a)
     b_map = _element_count_map(b)
@@ -217,11 +196,11 @@ def _get_raw_source(type_: str, path: str) -> str:
     def _read_url(url: str) -> str:
         # TODO: Proxy?
         hdr = {'User-Agent': 'Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:81.0) Gecko/20100101 Firefox/81.0',
-                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-                'Accept-Charset': 'ISO-8859-1,utf-8;q=0.7,*;q=0.3',
-                'Accept-Encoding': 'none',
-                'Accept-Language': 'en-US,en;q=0.8',
-                'Connection': 'keep-alive'}
+               'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+               'Accept-Charset': 'ISO-8859-1,utf-8;q=0.7,*;q=0.3',
+               'Accept-Encoding': 'none',
+               'Accept-Language': 'en-US,en;q=0.8',
+               'Connection': 'keep-alive'}
         request = urllib.request.Request(url=url, headers=hdr)
         return urllib.request.urlopen(request).read()
 
@@ -240,7 +219,7 @@ def _headers_from_html(html: str) -> Sequence[str]:
     # https://stackoverflow.com/questions/45062534/how-to-grab-all-headers-from-a-website-using-beautifulsoup
     headers = [a.get_text().strip("¶") for a in soup.find_all(re.compile('^h[1-6]$'))]
     # Remove unwanted chapters
-    headers = [a for a in headers if a.upper() not in _UNWANTED_CHAPTERS]
+    headers = [a for a in headers if a.upper() not in mod_config.UNWANTED_CHAPTERS]
     return headers
 
 
@@ -254,8 +233,8 @@ def _keywords_by_rake(texts_by_chapters: Sequence[Tuple[str, str]],
     for header, text_block in texts_by_chapters:
         complete_text_by_chapters.append(text_block)
 
-    r = Rake(stopwords=_STOP_WORDS,
-             punctuations=_PUNCTUATION,
+    r = Rake(stopwords=mod_config.STOP_WORDS,
+             punctuations=mod_config.PUNCTUATION,
              max_length=1,
              min_length=1)
     # Extract keywords from the text_block
@@ -283,7 +262,7 @@ def _lemmatize_tokens(tokens: Sequence[str]) -> Sequence[str]:
 
 def main():
     logging.basicConfig(level=logging.DEBUG,
-                        format=_LOGGING_FORMAT)
+                        format=mod_config.LOGGING_FORMAT)
     parsed_args = _argument_parser().parse_args()
     config = {
         "source_type": parsed_args.source_type,
@@ -398,7 +377,7 @@ def _preprocess_text(raw_text: str) -> Sequence[str]:
     text = raw_text.lower()
     text = _remove_punctuation(text)
     tokens = _tokenize_text(text, nltk.tokenize.word_tokenize)
-    tokens_without_stopwords = _remove_stopwords(tokens, _STOP_WORDS)
+    tokens_without_stopwords = _remove_stopwords(tokens, mod_config.STOP_WORDS)
     # stemmed_tokens = _stemming(tokens_without_stopwords, nltk.PorterStemmer())
     lemmatized_tokens = _lemmatize_tokens(tokens_without_stopwords)
     return lemmatized_tokens
@@ -418,7 +397,7 @@ def _preprocess_words(words: Sequence[str]) -> Sequence[str]:
 
 def _read_reference_summaries() -> Dict[int, str]:
     ref_summaries = dict()
-    for ref_summary_file in _REFERENCE_SUMMARY_FILES:
+    for ref_summary_file in mod_config.REFERENCE_SUMMARY_FILES:
         with open(ref_summary_file, "r") as f:
             raw_summaries = f.readlines()
             parsed_summaries = _parse_ref_summaries(raw_summaries)
@@ -449,7 +428,7 @@ def _remove_duplicates(words: Sequence[str]) -> Sequence[str]:
 
 
 def _remove_punctuation(text: str) -> str:
-    return "".join([c for c in text if c not in _PUNCTUATION])
+    return "".join([c for c in text if c not in mod_config.PUNCTUATION])
 
 
 def _remove_stopwords(tokens: Sequence[str], wordlist: Sequence[str]) -> Sequence[str]:
@@ -493,7 +472,7 @@ def _summary(config: Dict[str, Any]) -> str:
 
     # Preprocessed named entities
     processed_named_ents = _named_entities_from_text_chapters(texts_by_chapters,
-                                                              _NAMED_ENTITY_TAGS)
+                                                              mod_config.NAMED_ENTITY_TAGS)
     _logger.info("PROCESSED NAMED ENTITIES: {}".format(processed_named_ents))
 
     # Frequency distribution
