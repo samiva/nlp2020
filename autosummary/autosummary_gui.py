@@ -9,7 +9,10 @@ import tkinter.scrolledtext
 import tkinter.filedialog
 import tkinter.filedialog
 
+from typing import Dict, Sequence
+
 import config
+import sumy_interface
 
 _logger = logging.getLogger(__name__)
 _WORKING_DIRECTORY = os.getcwd()
@@ -38,30 +41,21 @@ class Application(tk.Frame):
         # Our summarizers
         our_summarizer_label = tk.LabelFrame(left_side_container, text="Our summarizers")
         our_summarizer_label.pack(fill="both", expand="yes")
-        high_freq_checkbox = tk.Checkbutton(our_summarizer_label, text="High frequency words")
-        rake_checkbox = tk.Checkbutton(our_summarizer_label, text="RAKE")
+        self.our_summarizer_options = CheckboxColumn(our_summarizer_label,
+                                                     ["High FreqDist words", "RAKE"])
 
-        #Sumy's summarizers
+        # Sumy's summarizers
         sumy_summarizer_label = tk.LabelFrame(left_side_container, text="Sumy's summarizers")
         sumy_summarizer_label.pack(fill="both", expand="yes")
-        luhn_checkbox = tk.Checkbutton(sumy_summarizer_label, text="Luhn")
-        edmundson_checkbox = tk.Checkbutton(sumy_summarizer_label, text="Edmundson")
-        lsa_checkbox = tk.Checkbutton(sumy_summarizer_label, text="LSA")
-        lexrank_checkbox = tk.Checkbutton(sumy_summarizer_label, text="LexRank")
-        textrank_checkbox = tk.Checkbutton(sumy_summarizer_label, text="TextRank")
-        sumbasic_checkbox = tk.Checkbutton(sumy_summarizer_label, text="SumBasic")
-        kl_checkbox = tk.Checkbutton(sumy_summarizer_label, text="KL")
-        left_side_container.pack(side=tk.LEFT)
-        high_freq_checkbox.pack()
-        rake_checkbox.pack()
+        # The list order should remain the same so we use sorting
+        options = list(reversed(sorted(sumy_interface.SUMMARIZERS.values())))
+        self.sumy_summarizer_options = CheckboxColumn(sumy_summarizer_label,
+                                                      options)
 
-        luhn_checkbox.pack()
-        edmundson_checkbox.pack()
-        lsa_checkbox.pack()
-        lexrank_checkbox.pack()
-        textrank_checkbox.pack()
-        sumbasic_checkbox.pack()
-        kl_checkbox.pack()
+        left_side_container.pack(side=tk.LEFT)
+        self.our_summarizer_options.pack()
+        self.sumy_summarizer_options.pack()
+
 
     def create_right_side(self, frame: tk.Frame):
         right_side_container = tk.Frame(frame)
@@ -148,6 +142,24 @@ class Application(tk.Frame):
         else:
             self.path_selector["state"] = "normal"
         self.source_path.set("")
+
+
+class CheckboxColumn(tk.Frame):
+    # Adapted from https://www.python-course.eu/tkinter_checkboxes.php
+    def __init__(self, parent: tk.Widget, options: Sequence[str]):
+        tk.Frame.__init__(self, parent)
+        self.picks = dict()
+        for option in options:
+            pick = tk.IntVar()
+            box = tk.Checkbutton(self, text=option, variable=pick)
+            box.pack(side=tk.BOTTOM, anchor=tk.W, expand=tk.YES)
+            self.picks[option] = pick
+
+    def selected(self) -> Dict[str, int]:
+        int_dict = dict()
+        for key in self.picks.keys():
+            int_dict[key] = self.picks[key].get()
+        return int_dict
 
 
 def main():
