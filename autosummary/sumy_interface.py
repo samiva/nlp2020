@@ -11,22 +11,22 @@ from typing import Optional
 
 _logger = logging.getLogger(__name__)
 _LOGGING_FORMAT = "%(asctime)s %(module)s [%(levelname)s]: %(message)s"
-SUMMARIZERS = (
-    "luhn",
-    "edmundson",
-    "lsa",
-    "text-rank",
-    "lex-rank",
-    "sum-basic",
-    "kl",
-)
+SUMMARIZERS = {
+    "luhn": "Luhn",
+    "edmundson": "Edmundson",
+    "lsa": "LSA",
+    "text-rank": "TextRank",
+    "lex-rank": "LexRank",
+    "sum-basic": "SumBasic",
+    "kl": "KL",
+}
 
 
 def _argument_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser()
     p.add_argument("summarizer",
                    type=str,
-                   choices=SUMMARIZERS,
+                   choices=SUMMARIZERS.keys(),
                    help="Specifies which sumy's summarizer is used.")
     p.add_argument("--length", "-l",
                    type=int,
@@ -40,7 +40,7 @@ def _argument_parser() -> argparse.ArgumentParser:
 
 
 def summarize(url: str, summarizer: str, length: int = 10) -> Optional[str]:
-    if summarizer not in SUMMARIZERS:
+    if summarizer not in SUMMARIZERS.keys():
         _logger.warning("Unsupported summarizer: '{}'".format(summarizer))
         return
     call = ["sumy", summarizer, "--length={}".format(length), "--url={}".format(url)]

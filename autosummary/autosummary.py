@@ -295,7 +295,7 @@ def main():
     summary = _summary(config)
     _logger.info("SUMMARY: {}".format(summary))
     if parsed_args.sumy:
-        sumy_summaries = _summary_sumy(config, sumy_interface.SUMMARIZERS)
+        sumy_summaries = _summary_sumy(config, sumy_interface.SUMMARIZERS.keys())
         if sumy_summaries is None:
             _logger.warning("Extraction of sumy summaries failed.")
             return
