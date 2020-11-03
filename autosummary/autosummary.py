@@ -217,6 +217,7 @@ def _headers_from_html(html: str) -> Sequence[str]:
     soup = BeautifulSoup(html, "html.parser")
     # Get all headers in the order of appearance
     # https://stackoverflow.com/questions/45062534/how-to-grab-all-headers-from-a-website-using-beautifulsoup
+    # TODO: More thorough stripping (e.g. r"\n\t ")
     headers = [a.get_text().strip("¶") for a in soup.find_all(re.compile('^h[1-6]$'))]
     # Remove unwanted chapters
     headers = [a for a in headers if a.upper() not in mod_config.UNWANTED_CHAPTERS]

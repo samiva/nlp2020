@@ -9,7 +9,7 @@ import tkinter.scrolledtext
 import tkinter.filedialog
 import tkinter.filedialog
 
-from typing import Dict, Sequence
+from typing import Sequence, Tuple
 
 import config
 import sumy_interface
@@ -52,13 +52,14 @@ class Application(tk.Frame):
         our_summarizer_label = tk.LabelFrame(left_side_container, text="Our summarizers")
         our_summarizer_label.pack(fill="both", expand="yes")
         self.our_summarizer_options = CheckboxColumn(our_summarizer_label,
-                                                     ["High FreqDist words", "RAKE"])
+                                                     [("freq", "High FreqDist words"),
+                                                      ("rake", "RAKE")])
 
         # Sumy's summarizers
         sumy_summarizer_label = tk.LabelFrame(left_side_container, text="Sumy's summarizers")
         sumy_summarizer_label.pack(fill="both", expand="yes")
         # The list order should remain the same so we use sorting
-        options = list(reversed(sorted(sumy_interface.SUMMARIZERS.values())))
+        options = (sorted(sumy_interface.SUMMARIZERS.items()))
         self.sumy_summarizer_options = CheckboxColumn(sumy_summarizer_label,
                                                       options)
 
@@ -151,20 +152,19 @@ class Application(tk.Frame):
 
 class CheckboxColumn(tk.Frame):
     # Adapted from https://www.python-course.eu/tkinter_checkboxes.php
-    def __init__(self, parent: tk.Widget, options: Sequence[str]):
+    def __init__(self, parent: tk.Widget, option_names: Sequence[Tuple[str, str]]):
         tk.Frame.__init__(self, parent)
-        self.picks = dict()
-        for option in options:
-            pick = tk.IntVar()
-            box = tk.Checkbutton(self, text=option, variable=pick)
-            box.pack(side=tk.BOTTOM, anchor=tk.W, expand=tk.YES)
-            self.picks[option] = pick
+        self.checkboxes = dict()
+        for name_tuple in option_names:
+            box_val = tk.IntVar()
+            # The UI name goes for the GUI
+            box = tk.Checkbutton(self, text=name_tuple[1], variable=box_val)
+            box.pack(side=tk.TOP, anchor=tk.W, expand=tk.YES)
+            self.checkboxes[name_tuple] = box_val
 
-    def selected(self) -> Dict[str, int]:
-        int_dict = dict()
-        for key in self.picks.keys():
-            int_dict[key] = self.picks[key].get()
-        return int_dict
+    def selected(self) -> Sequence[str]:
+        # Return only the internal-use name for the selected checkboxes.
+        return [name_tuple[0] for name_tuple in self.checkboxes.keys() if self.checkboxes[name_tuple].get() == 1]
 
 
 def main():
