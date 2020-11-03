@@ -20,8 +20,8 @@ from bs4 import BeautifulSoup
 from nltk.probability import FreqDist
 from rake_nltk import Rake
 
-import autosummary.sumy_interface as sumy_interface
-import autosummary.config as mod_config
+import sumy_interface
+import config as mod_config
 
 
 _logger = logging.getLogger(__name__)
