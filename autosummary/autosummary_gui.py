@@ -30,7 +30,17 @@ class Application(tk.Frame):
         super().__init__(master)
         self.master = master
         self.pack()
-        self.create_variables()
+
+        # Widgets that need to be accessible
+        self.our_summarizer_options = None
+        self.sumy_summarizer_options = None
+        self.path_entry = None
+        self.path_selector = None
+
+        # Variables that need to be accessible
+        self.source_type = tk.StringVar(value=_SourceType.URL.name)
+        self.source_path = tk.StringVar(value="")
+
         self.create_widgets()
 
     def create_left_side(self, frame: tk.Frame):
@@ -55,7 +65,6 @@ class Application(tk.Frame):
         left_side_container.pack(side=tk.LEFT)
         self.our_summarizer_options.pack()
         self.sumy_summarizer_options.pack()
-
 
     def create_right_side(self, frame: tk.Frame):
         right_side_container = tk.Frame(frame)
@@ -106,10 +115,6 @@ class Application(tk.Frame):
 
         summarize_button = tk.Button(right_side_container, text="Summarize")
         summarize_button.pack()
-
-    def create_variables(self):
-        self.source_type = tk.StringVar(value=_SourceType.URL.name)
-        self.source_path = tk.StringVar(value="")
 
     def create_widgets(self):
         main_frame = tk.Frame(self)
