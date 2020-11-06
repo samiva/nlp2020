@@ -111,43 +111,52 @@ def _element_overlap(a: List[Any], b: List[Any]) -> int:
     return overlap
 
 
-def _evaluation_summaries(config: Dict[str, Any],
-                          count: int,
-                          random_: bool = False) -> Sequence[Tuple[Tuple[int, str], Dict[str, float]]]:
+def _evaluate_summaries(config: Dict[str, Any]) -> Sequence[Tuple[Tuple[int, str, str], Dict[str, float]]]:
+    """Read the reference summaries for the dataset. Pick document indexes for
+    evaluation (either by random, if evaluate-random is set to True, or in order
+    from the beginning otherwise). Run the summarization algorithm on the
+    documents specified by the indexes. Evaluate the summaries by calculating
+    ROUGE2 and ROUGE3 metrics for the summaries based on the corresponding
+    reference summaries."""
+    if config["evaluate-count"] == 0:
+        msg = "Cannot use 'dataset' source type if evaluate count is not specified."
+        raise ValueError(msg)
+
     # Get a list of the dataset source urls
     source_paths = _get_raw_source("file", config["source_path"])
     source_paths = source_paths.split("\n")
 
-    if random_:
+    if config["evaluate-random"]:
         # Pick random document indexes for the summarization
         indexes = []
-        for i in range(count):
+        for i in range(config["evaluate-count"]):
             # Select a random index from the available document indexes
             indexes.append(random.randint(0, len(source_paths) + 1))
     else:
         # Pick the indexes from the beginning
-        indexes = [i for i in range(count)]
+        indexes = [i for i in range(config["evaluate-count"])]
     ref_summaries_by_index = ref_summaries_for_indexes(indexes)
 
     summary_config = config
     # Dataset sources are stored as urls
     summary_config["source_type"] = "url"
-    summaries = []
+    results = []
 
     for i in indexes:
         # Go through the source_paths in order, get summaries and calculate their
-        # ROUGE2 and ROUGE3 based on the corresponding reference summaries.
+        # ROUGE2 and ROUGE3 metrics based on the corresponding reference summaries.
         summary_config["source_path"] = source_paths[i]
         summary = _summary(summary_config)
         if i not in ref_summaries_by_index:
             _logger.warning("No matching index in reference summaries for '{}'".format(i))
             continue
         eval_results = _evaluate_summary(summary, ref_summaries_by_index[i])
-        summaries.append(((i, summary), eval_results))
-    return summaries
+        results.append(((i, summary, ref_summaries_by_index[i]), eval_results))
+    return results
 
 
 def _evaluate_summary(summary: str, ref_summary: str) -> Dict[str, float]:
+    """Returns the ROUGE2 and ROUGE3 (precision & recall) metrics for the summary."""
     # ROUGE 2
     summary_bigrams = [a for a in nltk.bigrams(summary)]
     ref_summary_bigrams = [b for b in nltk.bigrams(ref_summary)]
@@ -271,25 +280,27 @@ def main():
         "word_count": parsed_args.word_count,
         "keyword": parsed_args.keyword,
         "ne_filter": parsed_args.ne_filter,
+        "evaluate-count": parsed_args.evaluate,
+        # TODO: Make configurable
+        "evaluate-random": False,
     }
     if config["source_type"] == "dataset":
-        if parsed_args.evaluate == 0:
-            msg = "Cannot use 'dataset' source type if evaluate count is not specified."
-            _logger.warning(msg)
+        try:
+            eval_results = _evaluate_summaries(config)
+        except ValueError as e:
+            _logger.exception(e)
             return
-        eval_summaries = _evaluation_summaries(config,
-                                               parsed_args.evaluate,
-                                               random_=False)
-        for eval_ in eval_summaries:
-            doc_id = eval_[0][0]
-            summary_output = eval_[0][1]
-            eval_results = eval_[1]
+
+        for result in eval_results:
+            doc_id = result[0][0]
+            summary_output = result[0][1]
+            eval_metrics = result[1]
             msg = "SUMMARY FOR DOC_{} (ROUGE2: p={:.3f} r={:.3f}) (ROUGE3: p={:.3f} r={:.3f}): {}"
             _logger.info(msg.format(doc_id,
-                                    eval_results["rouge2-precision"],
-                                    eval_results["rouge2-recall"],
-                                    eval_results["rouge3-precision"],
-                                    eval_results["rouge3-recall"],
+                                    eval_metrics["rouge2-precision"],
+                                    eval_metrics["rouge2-recall"],
+                                    eval_metrics["rouge3-precision"],
+                                    eval_metrics["rouge3-recall"],
                                     summary_output))
         return
 
@@ -397,6 +408,8 @@ def _preprocess_words(words: Sequence[str]) -> Sequence[str]:
 
 
 def _read_reference_summaries() -> Dict[int, str]:
+    """Reads the reference summaries for the documents and returns a dictionary
+    with document indexes as the keys and reference summaries as values."""
     ref_summaries = dict()
     for ref_summary_file in mod_config.REFERENCE_SUMMARY_FILES:
         with open(ref_summary_file, "r") as f:
@@ -407,6 +420,8 @@ def _read_reference_summaries() -> Dict[int, str]:
 
 
 def ref_summaries_for_indexes(wanted_indexes: Sequence[int]) -> Dict[int, str]:
+    """Returns a dictionary where each document index has a reference summary as
+    a single string."""
     ref_summaries_all = _read_reference_summaries()
     ref_summaries = dict()
     ref_summary_indexes = ref_summaries_all.keys()
