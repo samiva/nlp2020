@@ -5,6 +5,8 @@ from nltk.corpus import stopwords
 LOGGING_FORMAT = "%(asctime)s %(module)s [%(levelname)s]: %(message)s"
 # Spacy tags for the named entities we're interested in using for the summarization logic
 NAMED_ENTITY_TAGS = ("PERSON", "ORG")
+# Specifies whether named entities will be filtered out of keywords.
+NE_FILTER = False
 # string.punctuation doesn't consider these different quotation marks by default
 PUNCTUATION = string.punctuation + r'“' + r'”'
 # Note: Remember to set these before using the module!
@@ -24,3 +26,4 @@ UNWANTED_CHAPTERS = (
     "TABLE OF CONTENTS",
     "CONTENTS",
 )
+WORD_COUNT = 10

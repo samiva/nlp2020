@@ -11,8 +11,8 @@ import tkinter.filedialog
 
 from typing import Sequence, Tuple
 
-import config
-import sumy_interface
+from . import config
+from . import sumy_interface
 
 _logger = logging.getLogger(__name__)
 _WORKING_DIRECTORY = os.getcwd()
@@ -167,13 +167,9 @@ class CheckboxColumn(tk.Frame):
         return [name_tuple[0] for name_tuple in self.checkboxes.keys() if self.checkboxes[name_tuple].get() == 1]
 
 
-def main():
+def run():
     logging.basicConfig(level=logging.DEBUG,
                         format=config.LOGGING_FORMAT)
     root = tk.Tk()
     app = Application(master=root)
     app.mainloop()
-
-
-if __name__ == "__main__":
-    main()

@@ -1,10 +1,10 @@
 
 """
-This is the main module of the autosummary project. Currently it offers both
-the CLI and the actual automatic summarization functionality.
+This is the main module of the autosummary project. It offers the API for the
+summarizers and their evaluation. The summarization logic for the high freqdist
+word summarizer is also included in this library.
 """
 
-import argparse
 import logging
 import random
 import re
@@ -20,51 +20,11 @@ from bs4 import BeautifulSoup
 from nltk.probability import FreqDist
 from rake_nltk import Rake
 
-import sumy_interface
-import config as mod_config
+from . import sumy_interface
+from . import config as mod_config
 
 
 _logger = logging.getLogger(__name__)
-
-
-def _argument_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser()
-    parser.add_argument("source_type",
-                        type=str,
-                        choices=("url", "file", "dataset"),
-                        help="Specifies the type of the source_path: URL or filepath.")
-    parser.add_argument("source_path",
-                        type=str,
-                        help="Filepath or URL pointing to source.")
-    parser.add_argument("-w",
-                        dest="word_count",
-                        type=int,
-                        default=10,
-                        help="Number of high frequency words to include for the summarization.")
-    parser.add_argument("-k", "--keyword",
-                        dest="keyword",
-                        type=str,
-                        choices=["freq", "rake"],
-                        default="freq",
-                        help="Specifies which keyword extraction method is used.")
-    parser.add_argument("--ne-filter",
-                        dest="ne_filter",
-                        action="store_true",
-                        default=False,
-                        help="Filter out named entities from the keywords.")
-    parser.add_argument("--sumy",
-                        dest="sumy",
-                        action="store_true",
-                        default=False,
-                        help="Run summarization on sumy's summarizers as well.")
-    parser.add_argument("--evaluate",
-                        dest="evaluate",
-                        type=int,
-                        default=0,
-                        help="Run the summarization for the specified number of"
-                             "entries from the CNN/DailyMail dataset. Calculate"
-                             "the ROUGE2 and ROUGE3 for these summaries.")
-    return parser
 
 
 def _chapter_from_html(html: str, chapter_header: str) -> Optional[str]:
@@ -111,7 +71,7 @@ def _element_overlap(a: List[Any], b: List[Any]) -> int:
     return overlap
 
 
-def _evaluate_summaries(config: Dict[str, Any]) -> Sequence[Tuple[Tuple[int, str, str], Dict[str, float]]]:
+def evaluate_summaries(config: Dict[str, Any]) -> Sequence[Tuple[Tuple[int, str, str], Dict[str, float]]]:
     """Read the reference summaries for the dataset. Pick document indexes for
     evaluation (either by random, if evaluate-random is set to True, or in order
     from the beginning otherwise). Run the summarization algorithm on the
@@ -146,7 +106,7 @@ def _evaluate_summaries(config: Dict[str, Any]) -> Sequence[Tuple[Tuple[int, str
         # Go through the source_paths in order, get summaries and calculate their
         # ROUGE2 and ROUGE3 metrics based on the corresponding reference summaries.
         summary_config["source_path"] = source_paths[i]
-        summary = _summary(summary_config)
+        summary = summary_extract(summary_config)
         if i not in ref_summaries_by_index:
             _logger.warning("No matching index in reference summaries for '{}'".format(i))
             continue
@@ -268,52 +228,6 @@ def _keywords_by_rake(texts_by_chapters: Sequence[Tuple[str, str]],
 def _lemmatize_tokens(tokens: Sequence[str]) -> Sequence[str]:
     wnl = nltk.WordNetLemmatizer()
     return [wnl.lemmatize(t) for t in tokens]
-
-
-def main():
-    logging.basicConfig(level=logging.DEBUG,
-                        format=mod_config.LOGGING_FORMAT)
-    parsed_args = _argument_parser().parse_args()
-    config = {
-        "source_type": parsed_args.source_type,
-        "source_path": parsed_args.source_path,
-        "word_count": parsed_args.word_count,
-        "keyword": parsed_args.keyword,
-        "ne_filter": parsed_args.ne_filter,
-        "evaluate-count": parsed_args.evaluate,
-        # TODO: Make configurable
-        "evaluate-random": False,
-    }
-    if config["source_type"] == "dataset":
-        try:
-            eval_results = _evaluate_summaries(config)
-        except ValueError as e:
-            _logger.exception(e)
-            return
-
-        for result in eval_results:
-            doc_id = result[0][0]
-            summary_output = result[0][1]
-            eval_metrics = result[1]
-            msg = "SUMMARY FOR DOC_{} (ROUGE2: p={:.3f} r={:.3f}) (ROUGE3: p={:.3f} r={:.3f}): {}"
-            _logger.info(msg.format(doc_id,
-                                    eval_metrics["rouge2-precision"],
-                                    eval_metrics["rouge2-recall"],
-                                    eval_metrics["rouge3-precision"],
-                                    eval_metrics["rouge3-recall"],
-                                    summary_output))
-        return
-
-    summary = _summary(config)
-    _logger.info("SUMMARY: {}".format(summary))
-    if parsed_args.sumy:
-        sumy_summaries = _summary_sumy(config, sumy_interface.SUMMARIZERS.keys())
-        if sumy_summaries is None:
-            _logger.warning("Extraction of sumy summaries failed.")
-            return
-        _logger.debug(sumy_summaries)
-        for summarizer, sumy_summary in sumy_summaries.items():
-            _logger.info("SUMMARY [{}]: {}".format(summarizer, sumy_summary))
 
 
 def _named_entities_from_text_chapters(texts_by_chapters: Sequence[Tuple[str, str]],
@@ -464,7 +378,7 @@ def _stemming(tokens: Sequence[str], stemmer) -> Sequence[str]:
     return [stemmer.stem(w) for w in tokens]
 
 
-def _summary(config: Dict[str, Any]) -> str:
+def summary_extract(config: Dict[str, Any]) -> str:
     source_type = config["source_type"]
     source_path = config["source_path"]
     word_count = config["word_count"]
@@ -625,9 +539,9 @@ def _summary_sentence_for_word(raw_sentences: Sequence[Tuple[str, Sequence[str]]
     return summary_sentence_candidate
 
 
-def _summary_sumy(config: Dict[str, Any],
-                  summarizers: Sequence[str],
-                  summary_length: int = 10) -> Optional[Dict[str, str]]:
+def summary_sumy(config: Dict[str, Any],
+                 summarizers: Sequence[str],
+                 summary_length: int = 10) -> Optional[Dict[str, str]]:
     """Run specified sumy summarizers for the specified document. Return a dictionary
     of summarizer_name: output_summary key: value pairs."""
     if config["source_type"] != "url":
@@ -674,7 +588,3 @@ def _tokenize_text(text: str, tokenizer) -> Sequence[str]:
 
 def _word_frequency_distribution(tokens: Sequence[str]) -> FreqDist:
     return FreqDist(tokens)
-
-
-if __name__ == "__main__":
-    main()
