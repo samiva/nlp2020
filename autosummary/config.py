@@ -2,6 +2,7 @@ import string
 
 from nltk.corpus import stopwords
 
+DATASET_FILE = "/home/toni/Projects/Uni/nlp2020/files/test_article_links.txt"
 LOGGING_FORMAT = "%(asctime)s %(module)s [%(levelname)s]: %(message)s"
 # Spacy tags for the named entities we're interested in using for the summarization logic
 NAMED_ENTITY_TAGS = ("PERSON", "ORG")
