@@ -248,8 +248,8 @@ def _lemmatize_tokens(tokens: Sequence[str]) -> Sequence[str]:
     return [wnl.lemmatize(t) for t in tokens]
 
 
-def _named_entities_from_text_chapters(texts_by_chapters: Sequence[Tuple[str, str]],
-                                       labels: Sequence[str]) -> Sequence[str]:
+def named_entities_from_text_chapters(texts_by_chapters: Sequence[Tuple[str, str]],
+                                      labels: Sequence[str]) -> Sequence[str]:
     labels = [label.upper() for label in labels]
     nlp = spacy.load("en_core_web_sm")
 
@@ -357,7 +357,7 @@ def process_text(config: Dict[str, Any]) -> Tuple[str,
     _logger.debug("HEADERS: {}".format(headers_raw))
 
     texts_by_chapters = _texts_by_chapters(raw_html, headers_raw)
-    sentences_by_chapters = _sentences_by_chapters(texts_by_chapters)
+    sentences_by_chapters = text_by_chapters_to_sentences_by_chapters(texts_by_chapters)
     _logger.debug("SENTENCES BY CHAPTERS: {}".format(sentences_by_chapters))
 
     # Preprocessing
@@ -411,7 +411,7 @@ def _remove_stopwords(tokens: Sequence[str], wordlist: Sequence[str]) -> Sequenc
     return [w for w in tokens if w not in wordlist]
 
 
-def _sentences_by_chapters(texts_by_chapters: Sequence[Tuple[str, str]]) -> Sequence[Tuple[str, Sequence[str]]]:
+def text_by_chapters_to_sentences_by_chapters(texts_by_chapters: Sequence[Tuple[str, str]]) -> Sequence[Tuple[str, Sequence[str]]]:
     """Turns a (chapter_header, chapter_text) representation into
     (chapter_header, list_of_chapter_text_words)."""
     sentences_by_chapters = []
@@ -476,8 +476,8 @@ def summary_by_config(config: Dict[str, Any]) -> str:
     title_raw, texts_by_chapters, processed_wordlists_by_chapters = process_text(config)
 
     # Preprocessed named entities
-    processed_named_ents = _named_entities_from_text_chapters(texts_by_chapters,
-                                                              mod_config.NAMED_ENTITY_TAGS)
+    processed_named_ents = named_entities_from_text_chapters(texts_by_chapters,
+                                                             mod_config.NAMED_ENTITY_TAGS)
     _logger.info("PROCESSED NAMED ENTITIES: {}".format(processed_named_ents))
 
     if ne_filter:
@@ -498,7 +498,7 @@ def summary_by_config(config: Dict[str, Any]) -> str:
         msg = "Invalid keyword extraction method: '{}'".format(keyword_extraction_method)
         raise ValueError(msg)
 
-    sentences_by_chapters = _sentences_by_chapters(texts_by_chapters)
+    sentences_by_chapters = text_by_chapters_to_sentences_by_chapters(texts_by_chapters)
     return summary_extract(config,
                            title_raw,
                            sentences_by_chapters,

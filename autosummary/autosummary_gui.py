@@ -9,8 +9,9 @@ import tkinter.scrolledtext
 import tkinter.filedialog
 import tkinter.filedialog
 
-from typing import Sequence, Tuple
+from typing import Any, Dict, Sequence, Tuple
 
+from . import autosummary
 from . import config
 from . import sumy_interface
 
@@ -20,9 +21,9 @@ _WORKING_DIRECTORY = os.getcwd()
 
 # Mapping of source type internal names to UI names
 class _SourceType(enum.Enum):
-    URL = "URL"
-    FILE = "Local File"
-    DATASET = "Dataset"
+    url = "URL"
+    file = "Local File"
+    dataset = "Dataset"
 
 
 class Application(tk.Frame):
@@ -36,9 +37,11 @@ class Application(tk.Frame):
         self.sumy_summarizer_options = None
         self.path_entry = None
         self.path_selector = None
+        self.summarize_button = None
+        self.result_box = None
 
         # Variables that need to be accessible
-        self.source_type = tk.StringVar(value=_SourceType.URL.name)
+        self.source_type = tk.StringVar(value=_SourceType.url.name)
         self.source_path = tk.StringVar(value="")
 
         self.create_widgets()
@@ -75,19 +78,19 @@ class Application(tk.Frame):
         source_type_label = tk.LabelFrame(right_side_container, text="Source type")
         source_type_label.pack(fill="both", expand="yes")
         url_radiobutton = tk.Radiobutton(source_type_label,
-                                         text=_SourceType.URL.value,
+                                         text=_SourceType.url.value,
                                          variable=self.source_type,
-                                         value=_SourceType.URL.name,
+                                         value=_SourceType.url.name,
                                          command=self.source_type_selected)
         file_radiobutton = tk.Radiobutton(source_type_label,
-                                          text=_SourceType.FILE.value,
+                                          text=_SourceType.file.value,
                                           variable=self.source_type,
-                                          value=_SourceType.FILE.name,
+                                          value=_SourceType.file.name,
                                           command=self.source_type_selected)
         dataset_radiobutton = tk.Radiobutton(source_type_label,
-                                             text=_SourceType.DATASET.value,
+                                             text=_SourceType.dataset.value,
                                              variable=self.source_type,
-                                             value=_SourceType.DATASET.name,
+                                             value=_SourceType.dataset.name,
                                              command=self.source_type_selected)
 
         url_radiobutton.pack(side=tk.LEFT)
@@ -107,15 +110,17 @@ class Application(tk.Frame):
         self.path_selector.pack(side=tk.LEFT)
 
         # Log box
-        result_box = tkinter.scrolledtext.ScrolledText(right_side_container,
-                                                       wrap=tk.WORD,
-                                                       width=40,
-                                                       height=10)
-        result_box.pack()
-        result_box.configure(state='disabled')
+        self.result_box = tkinter.scrolledtext.ScrolledText(right_side_container,
+                                                            wrap=tk.WORD,
+                                                            width=40,
+                                                            height=10)
+        self.result_box.pack()
+        self.result_box.configure(state='disabled')
 
-        summarize_button = tk.Button(right_side_container, text="Summarize")
-        summarize_button.pack()
+        self.summarize_button = tk.Button(right_side_container,
+                                          text="Summarize",
+                                          command=self.run_summarizers)
+        self.summarize_button.pack()
 
     def create_widgets(self):
         main_frame = tk.Frame(self)
@@ -123,15 +128,57 @@ class Application(tk.Frame):
         self.create_left_side(main_frame)
         self.create_right_side(main_frame)
 
+    def run_summarizers(self):
+        # Disable the button until the summarization is done
+        if self.source_path.get() in (None, "", " "):
+            _logger.info("No source path selected: Cannot run summarizer.")
+            # TODO: Message into resultbox
+            return
+
+        if (self.source_type.get() == _SourceType.file.name and
+                not self.source_path.get().endswith(".html")):
+            _logger.info("Selected local file does not seem to be .html: '{}'".format(self.source_path.get()))
+            # TODO: Message into resultbox
+            return
+
+        self.summarize_button["state"] = "disabled"
+
+        # Get the selected summarizers with own/sumy division
+        sumy_summarizers = self.sumy_summarizer_options.selected()
+        own_summarizers = self.our_summarizer_options.selected()
+
+        summarizer_config = {
+            "source_type": self.source_type.get(),
+            "source_path": self.source_path.get(),
+            # TODO: Make configurable via GUI
+            "word_count": config.WORD_COUNT,
+            # Configured before summarization start
+            "keyword": None,
+            # TODO: Make configurable via GUI
+            "ne_filter": config.NE_FILTER,
+        }
+
+        for summarizer in own_summarizers:
+            # TODO: Handling for datasets & evaluation!
+            summarizer_config["keyword"] = summarizer
+            summary, keywords, named_ents = _run_summarizer(summarizer_config)
+            # TODO: Display these in the result_box
+            _logger.info("KEYWORDS: {}".format(keywords))
+            _logger.info("NAMED ENTITIES: {}".format(named_ents))
+            _logger.info("SUMMARY: {}".format(summary))
+
+        # Summarization has finished. Enable the button again.
+        self.summarize_button["state"] = "normal"
+
     def source_type_file_browser(self):
         _logger.debug("FILE BROWSER: Source type: '{}'".format(self.source_type.get()))
-        if self.source_type.get() == _SourceType.FILE.name:
+        if self.source_type.get() == _SourceType.file.name:
             # Local files: File browser for selecting a .html file
             source_name = tkinter.filedialog.askopenfilename(initialdir=_WORKING_DIRECTORY,
                                                              title="Select a File",
                                                              filetypes=(("HTML files", "*.html*"),
                                                                         ("All files", "*.*")))
-        elif self.source_type.get() == _SourceType.DATASET.name:
+        elif self.source_type.get() == _SourceType.dataset.name:
             # Dataset files: File browser for selecting a directory (where the .txt files lie)
             source_name = tkinter.filedialog.askdirectory(initialdir=_WORKING_DIRECTORY,
                                                           title="Select a directory",
@@ -143,7 +190,7 @@ class Application(tk.Frame):
         self.source_path.set(source_name)
 
     def source_type_selected(self):
-        if self.source_type.get() == _SourceType.URL.name:
+        if self.source_type.get() == _SourceType.url.name:
             self.path_selector["state"] = "disabled"
         else:
             self.path_selector["state"] = "normal"
@@ -168,8 +215,51 @@ class CheckboxColumn(tk.Frame):
 
 
 def run():
-    logging.basicConfig(level=logging.DEBUG,
-                        format=config.LOGGING_FORMAT)
     root = tk.Tk()
     app = Application(master=root)
     app.mainloop()
+
+
+def _run_summarizer(summarizer_config: Dict[str, Any]) -> Tuple[str, Sequence[str], Sequence[str]]:
+    source_type = summarizer_config["source_type"]
+    source_path = summarizer_config["source_path"]
+    word_count = summarizer_config["word_count"]
+    keyword_extraction_method = summarizer_config["keyword"]
+    ne_filter = summarizer_config["ne_filter"]
+
+    _logger.debug("Using source '{}' ({})".format(source_path,
+                                                  source_type.upper()))
+
+    title_raw, texts_by_chapters, processed_wordlists_by_chapters = autosummary.process_text(summarizer_config)
+
+    # Preprocessed named entities
+    processed_named_ents = autosummary.named_entities_from_text_chapters(texts_by_chapters,
+                                                                         config.NAMED_ENTITY_TAGS)
+    _logger.info("PROCESSED NAMED ENTITIES: {}".format(processed_named_ents))
+
+    if ne_filter:
+        # Filter out named entities from the keywords
+        filter_words = processed_named_ents
+    else:
+        filter_words = None
+
+    if keyword_extraction_method == "freq":
+        keywords = autosummary.keywords_by_high_freqdist(processed_wordlists_by_chapters,
+                                                         word_count,
+                                                         filter_words)
+    elif keyword_extraction_method == "rake":
+        keywords = autosummary.keywords_by_rake(texts_by_chapters,
+                                                word_count,
+                                                filter_words)
+    else:
+        msg = "Invalid keyword extraction method: '{}'".format(keyword_extraction_method)
+        raise ValueError(msg)
+
+    sentences_by_chapters = autosummary.text_by_chapters_to_sentences_by_chapters(texts_by_chapters)
+    summary = autosummary.summary_extract(summarizer_config,
+                                          title_raw,
+                                          sentences_by_chapters,
+                                          processed_wordlists_by_chapters,
+                                          processed_named_ents,
+                                          keywords)
+    return summary, keywords, processed_named_ents
