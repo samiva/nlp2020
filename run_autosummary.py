@@ -99,7 +99,7 @@ def _run_cli(summary_config: Dict[str, Any]):
                                     summary_output))
         return
 
-    summary = autosummary.summary_extract(summary_config)
+    summary = autosummary.summary_by_config(summary_config)
     _logger.info("SUMMARY: {}".format(summary))
     if summary_config["use-sumy"]:
         sumy_summaries = autosummary.summary_sumy(summary_config,
