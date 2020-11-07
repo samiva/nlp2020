@@ -38,7 +38,7 @@ class TestSummarizer(unittest.TestCase):
     def test_evaluate_one_freq(self):
         config = _DEFAULT_CONFIG.copy()
         config["keyword"] = "freq"
-        config["source_path"] = autosummary.config.DATASET_FILE
+        config["source_path"] = autosummary.config.DATASET_DIRECTORY + autosummary.config.DATASET_FILE
         config["evaluate-count"] = 1
         eval_results = autosummary.autosummary.evaluate_summaries(config)
         summaries, eval_metrics = eval_results[0]
@@ -53,7 +53,7 @@ class TestSummarizer(unittest.TestCase):
     def test_evaluate_one_rake(self):
         config = _DEFAULT_CONFIG.copy()
         config["keyword"] = "rake"
-        config["source_path"] = autosummary.config.DATASET_FILE
+        config["source_path"] = autosummary.config.DATASET_DIRECTORY + autosummary.config.DATASET_FILE
         config["evaluate-count"] = 1
         eval_results = autosummary.autosummary.evaluate_summaries(config)
         summaries, eval_metrics = eval_results[0]

@@ -71,6 +71,34 @@ def _element_overlap(a: List[Any], b: List[Any]) -> int:
     return overlap
 
 
+def ref_summaries_by_indexes(source_paths: Sequence[str],
+                             evaluate_count: int,
+                             random_indexes: bool = False):
+    """Extract the reference summaries for a number of documents equal to evaluate_count.
+    There is an assumption that the document indexes are numbered from 0..N. Pick
+    the first evaluate_count document indexes if random_indexes is False. Otherwise
+    pick them at random from between 0 and the number of elements in source_paths."""
+    if evaluate_count == 0:
+        msg = "Invalid evaluate count for ref summary extraction: '{}'.".format(evaluate_count)
+        raise ValueError(msg)
+
+    if evaluate_count > len(source_paths):
+        msg = "Evaluate count ({}) exceeded the number of source elements ({}).".format(evaluate_count,
+                                                                                        len(source_paths))
+        raise ValueError(msg)
+
+    if random_indexes:
+        # Pick random document indexes for the summarization
+        indexes = []
+        for i in range(evaluate_count):
+            # Select a random index from the available document indexes
+            indexes.append(random.randint(0, len(source_paths) + 1))
+    else:
+        # Pick the indexes from the beginning
+        indexes = [i for i in range(evaluate_count)]
+    return ref_summaries_for_indexes(indexes)
+
+
 def evaluate_summaries(config: Dict[str, Any]) -> Sequence[Tuple[Tuple[int, str, str], Dict[str, float]]]:
     """Read the reference summaries for the dataset. Pick document indexes for
     evaluation (either by random, if evaluate-random is set to True, or in order
@@ -78,44 +106,31 @@ def evaluate_summaries(config: Dict[str, Any]) -> Sequence[Tuple[Tuple[int, str,
     documents specified by the indexes. Evaluate the summaries by calculating
     ROUGE2 and ROUGE3 metrics for the summaries based on the corresponding
     reference summaries."""
-    if config["evaluate-count"] == 0:
-        msg = "Cannot use 'dataset' source type if evaluate count is not specified."
-        raise ValueError(msg)
 
     # Get a list of the dataset source urls
-    source_paths = _get_raw_source("file", config["source_path"])
+    source_paths = get_raw_source("file", config["source_path"])
     source_paths = source_paths.split("\n")
 
-    if config["evaluate-random"]:
-        # Pick random document indexes for the summarization
-        indexes = []
-        for i in range(config["evaluate-count"]):
-            # Select a random index from the available document indexes
-            indexes.append(random.randint(0, len(source_paths) + 1))
-    else:
-        # Pick the indexes from the beginning
-        indexes = [i for i in range(config["evaluate-count"])]
-    ref_summaries_by_index = ref_summaries_for_indexes(indexes)
+    ref_summaries_by_index = ref_summaries_by_indexes(source_paths,
+                                                      config["evaluate-count"],
+                                                      config["evaluate-random"])
 
     summary_config = config
     # Dataset sources are stored as urls
     summary_config["source_type"] = "url"
     results = []
 
-    for i in indexes:
+    for i in ref_summaries_by_index.keys():
         # Go through the source_paths in order, get summaries and calculate their
         # ROUGE2 and ROUGE3 metrics based on the corresponding reference summaries.
         summary_config["source_path"] = source_paths[i]
         summary = summary_by_config(summary_config)
-        if i not in ref_summaries_by_index:
-            _logger.warning("No matching index in reference summaries for '{}'".format(i))
-            continue
-        eval_results = _evaluate_summary(summary, ref_summaries_by_index[i])
+        eval_results = evaluate_summary(summary, ref_summaries_by_index[i])
         results.append(((i, summary, ref_summaries_by_index[i]), eval_results))
     return results
 
 
-def _evaluate_summary(summary: str, ref_summary: str) -> Dict[str, float]:
+def evaluate_summary(summary: str, ref_summary: str) -> Dict[str, float]:
     """Returns the ROUGE2 and ROUGE3 (precision & recall) metrics for the summary."""
     # ROUGE 2
     summary_bigrams = [a for a in nltk.bigrams(summary)]
@@ -155,7 +170,7 @@ def _freq_dist_for_word_lists(processed_wordlists_by_chapters: Sequence[Tuple[st
     return _word_frequency_distribution(words)
 
 
-def _get_raw_source(type_: str, path: str) -> str:
+def get_raw_source(type_: str, path: str) -> str:
     """Handle the source fetching: get the raw HTML out of filepath or url"""
     def _read_file(filepath: str) -> str:
         with open(filepath, "r") as f:
@@ -350,7 +365,7 @@ def process_text(config: Dict[str, Any]) -> Tuple[str,
 
     _logger.debug("Using source '{}' ({})".format(source_path, source_type.upper()))
 
-    raw_html = _get_raw_source(source_type, source_path)
+    raw_html = get_raw_source(source_type, source_path)
 
     title_raw = _title_from_html(raw_html)
     headers_raw = _headers_from_html(raw_html)
@@ -372,7 +387,8 @@ def _read_reference_summaries() -> Dict[int, str]:
     with document indexes as the keys and reference summaries as values."""
     ref_summaries = dict()
     for ref_summary_file in mod_config.REFERENCE_SUMMARY_FILES:
-        with open(ref_summary_file, "r") as f:
+        complete_file_path = mod_config.DATASET_DIRECTORY + ref_summary_file
+        with open(complete_file_path, "r") as f:
             raw_summaries = f.readlines()
             parsed_summaries = _parse_ref_summaries(raw_summaries)
             ref_summaries.update(parsed_summaries)
@@ -390,6 +406,7 @@ def ref_summaries_for_indexes(wanted_indexes: Sequence[int]) -> Dict[int, str]:
         if i not in ref_summary_indexes:
             _logger.warning("Wanted index '{}' not in reference summary indexes!".format(i))
             continue
+        # TODO: Could do something more clever with this
         # Take only Facet-0!
         ref_summaries[i] = ref_summaries_all[i][0]
     return ref_summaries

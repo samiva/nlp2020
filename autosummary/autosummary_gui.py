@@ -154,14 +154,38 @@ class Application(tk.Frame):
             "word_count": config.WORD_COUNT,
             # Configured before summarization start
             "keyword": None,
-            # TODO: Make configurable via GUI
+            # TODO: Make these configurable via GUI
             "ne_filter": config.NE_FILTER,
+            "evaluate-count": config.EVALUATE_COUNT,
+            "evaluate-random": False,
         }
 
         for summarizer in own_summarizers:
-            # TODO: Handling for datasets & evaluation!
-            summarizer_config["keyword"] = summarizer
-            summary, keywords, named_ents = _run_summarizer(summarizer_config)
+            if summarizer_config["source_type"] == "dataset":
+                summarizer_config["keyword"] = summarizer
+                summarizer_config["source_path"] += "/" + autosummary.mod_config.DATASET_FILE
+                try:
+                    eval_results = _run_summarizer_evaluation(summarizer_config)
+                except ValueError as e:
+                    _logger.exception(e)
+                    return
+
+                for result in eval_results:
+                    doc_id = result[0][0]
+                    summary = result[0][1]
+                    keywords = result[0][2]
+                    named_ents = result[0][3]
+                    eval_metrics = result[1]
+                    msg = "SUMMARY FOR DOC_{} (ROUGE2: p={:.3f} r={:.3f}) (ROUGE3: p={:.3f} r={:.3f}): {}"
+                    _logger.debug(msg.format(doc_id,
+                                             eval_metrics["rouge2-precision"],
+                                             eval_metrics["rouge2-recall"],
+                                             eval_metrics["rouge3-precision"],
+                                             eval_metrics["rouge3-recall"],
+                                             summary))
+            else:
+                summarizer_config["keyword"] = summarizer
+                summary, keywords, named_ents = _run_summarizer(summarizer_config)
             # TODO: Display these in the result_box
             _logger.info("KEYWORDS: {}".format(keywords))
             _logger.info("NAMED ENTITIES: {}".format(named_ents))
@@ -218,6 +242,35 @@ def run():
     root = tk.Tk()
     app = Application(master=root)
     app.mainloop()
+
+
+def _run_summarizer_evaluation(summarizer_config: Dict[str, Any]) -> Sequence[Tuple[Tuple[int,
+                                                                                          str,
+                                                                                          Sequence[str],
+                                                                                          Sequence[str],
+                                                                                          str],
+                                                                                    Dict[str, float]]]:
+    source_paths = autosummary.get_raw_source("file",
+                                              summarizer_config["source_path"])
+    source_paths = source_paths.split("\n")
+
+    ref_summaries_by_index = autosummary.ref_summaries_by_indexes(source_paths,
+                                                                  summarizer_config["evaluate-count"],
+                                                                  summarizer_config["evaluate-random"])
+
+    # Dataset sources are stored as urls
+    summarizer_config["source_type"] = "url"
+    results = []
+
+    for i in ref_summaries_by_index.keys():
+        # Go through the source_paths in order, get summaries and calculate their
+        # ROUGE2 and ROUGE3 metrics based on the corresponding reference summaries.
+        summarizer_config["source_path"] = source_paths[i]
+        summary, keywords, processed_named_ents = _run_summarizer(summarizer_config)
+        eval_results = autosummary.evaluate_summary(summary,
+                                                    ref_summaries_by_index[i])
+        results.append(((i, summary, keywords, processed_named_ents, ref_summaries_by_index[i]), eval_results))
+    return results
 
 
 def _run_summarizer(summarizer_config: Dict[str, Any]) -> Tuple[str, Sequence[str], Sequence[str]]:
