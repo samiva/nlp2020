@@ -10,7 +10,7 @@ import random
 import re
 import urllib.request
 
-from typing import Any, Dict, Sequence, Tuple, List, Optional
+from typing import Any, Dict, List, Optional, Sequence, Tuple, Union
 
 import matplotlib.pyplot
 import nltk.tokenize
@@ -609,21 +609,56 @@ def _summary_sentence_for_word(raw_sentences: Sequence[Tuple[str, Sequence[str]]
 
 def summary_sumy(config: Dict[str, Any],
                  summarizers: Sequence[str],
-                 summary_length: int = 10) -> Optional[Dict[str, str]]:
+                 summary_length: int = 10) -> Optional[Dict[str,
+                                                            Union[str,
+                                                                  Sequence[Tuple[int, str, str, Dict[str,
+                                                                                                     float]]]]]]:
     """Run specified sumy summarizers for the specified document. Return a dictionary
     of summarizer_name: output_summary key: value pairs."""
-    if config["source_type"] != "url":
+    # TODO: Consider a less silly data structure to return
+
+    sumy_summaries = dict()
+
+    if config["source_type"] == "url":
+        # Run summarization on sumy's summarizers
+        for summarizer in summarizers:
+            sumy_summaries[summarizer] = sumy_interface.summarize_by_url(config["source_path"],
+                                                                         summarizer,
+                                                                         summary_length)
+    elif config["source_type"] == "dataset":
+        # TODO: Reuse the summary evaluation code - the following piece is mostly duplicate
+        # Get a list of the dataset source urls
+        config["source_path"] += "/" + mod_config.DATASET_FILE
+        source_paths = get_raw_source("file", config["source_path"])
+        source_paths = source_paths.split("\n")
+
+        ref_summaries_by_index = ref_summaries_by_indexes(source_paths,
+                                                          config["evaluate-count"],
+                                                          config["evaluate-random"])
+
+        for summarizer in summarizers:
+            for i in ref_summaries_by_index.keys():
+                # Go through the source_paths in order, get summaries and calculate their
+                # ROUGE2 and ROUGE3 metrics based on the corresponding reference summaries.
+                summary = sumy_interface.summarize_by_url(source_paths[i],
+                                                          summarizer,
+                                                          summary_length)
+                if summary in (None, "", " "):
+                    # TODO: Better handling?
+                    # Sumy's summarizer was not able to extract a summary: Skip it.
+                    continue
+                eval_results = evaluate_summary(summary, ref_summaries_by_index[i])
+                if summarizer not in sumy_summaries.keys():
+                    # First summary for the summarizer
+                    sumy_summaries[summarizer] = [((i, summary, ref_summaries_by_index[i]), eval_results)]
+                else:
+                    # At least one summary already added: we can append to the list.
+                    sumy_summaries[summarizer].append((i, summary, ref_summaries_by_index[i], eval_results))
+    else:
         # TODO: Support for local files
         msg = "Source type '{}' not supported for sumy summaries.".format(config["source_type"])
         _logger.warning(msg)
         return None
-
-    # Run summarization on sumy's summarizers
-    sumy_summaries = dict()
-    for summarizer in summarizers:
-        sumy_summaries[summarizer] = sumy_interface.summarize(config["source_path"],
-                                                              summarizer,
-                                                              summary_length)
     return sumy_summaries
 
 

@@ -39,7 +39,7 @@ def _argument_parser() -> argparse.ArgumentParser:
     return p
 
 
-def summarize(url: str, summarizer: str, length: int = 10) -> Optional[str]:
+def summarize_by_url(url: str, summarizer: str, length: int = 10) -> Optional[str]:
     if summarizer not in SUMMARIZERS.keys():
         _logger.warning("Unsupported summarizer: '{}'".format(summarizer))
         return
@@ -54,7 +54,7 @@ def _main():
     logging.basicConfig(level=logging.DEBUG,
                         format=_LOGGING_FORMAT)
     parsed_args = _argument_parser().parse_args()
-    summary = summarize(parsed_args.url, parsed_args.summarizer, parsed_args.length)
+    summary = summarize_by_url(parsed_args.url, parsed_args.summarizer, parsed_args.length)
     _logger.info("SUMMARY: {}".format(summary))
 
 

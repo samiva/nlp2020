@@ -97,19 +97,35 @@ def _run_cli(summary_config: Dict[str, Any]):
                                     eval_metrics["rouge3-precision"],
                                     eval_metrics["rouge3-recall"],
                                     summary_output))
-        return
+    else:
+        summary = autosummary.summary_by_config(summary_config)
+        _logger.info("SUMMARY: {}".format(summary))
 
-    summary = autosummary.summary_by_config(summary_config)
-    _logger.info("SUMMARY: {}".format(summary))
     if summary_config["use-sumy"]:
         sumy_summaries = autosummary.summary_sumy(summary_config,
                                                   sumy_interface.SUMMARIZERS.keys())
-        if sumy_summaries is None:
-            _logger.warning("Extraction of sumy summaries failed.")
-            return
-        _logger.debug(sumy_summaries)
-        for summarizer, sumy_summary in sumy_summaries.items():
-            _logger.info("SUMMARY [{}]: {}".format(summarizer, sumy_summary))
+        if sumy_summaries is not None:
+            # TODO: Code reuse
+            for summarizer in sumy_summaries.keys():
+                if isinstance(sumy_summaries[summarizer], str):
+                    _logger.info("{}: {}".format(summarizer.upper(),
+                                                 sumy_summaries[summarizer]))
+                else:
+                    # The summary is going to be in a weird format...
+                    for summary_data in sumy_summaries[summarizer]:
+                        _logger.critical(summary_data)
+                        doc_id = summary_data[0]
+                        summary = summary_data[1]
+                        # ref_summary = summary_data[0][2]
+                        eval_metrics = summary_data[1]
+                        msg = "SUMMARY [{}] FOR DOC_{} (ROUGE2: p={:.3f} r={:.3f}) (ROUGE3: p={:.3f} r={:.3f}): {}"
+                        _logger.info(msg.format(summarizer,
+                                                doc_id,
+                                                eval_metrics["rouge2-precision"],
+                                                eval_metrics["rouge2-recall"],
+                                                eval_metrics["rouge3-precision"],
+                                                eval_metrics["rouge3-recall"],
+                                                summary))
 
 
 def _run_gui():

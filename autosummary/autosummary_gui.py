@@ -191,6 +191,32 @@ class Application(tk.Frame):
             _logger.info("NAMED ENTITIES: {}".format(named_ents))
             _logger.info("SUMMARY: {}".format(summary))
 
+        sumy_summaries = autosummary.summary_sumy(summarizer_config,
+                                                  sumy_summarizers)
+        if sumy_summaries is not None:
+            # TODO: Code reuse
+            for summarizer in sumy_summaries.keys():
+                # TODO: Display these in the result_box
+                if type(sumy_summaries[summarizer]) == "str":
+                    _logger.info("{}: {}".format(summarizer.upper(),
+                                                 sumy_summaries[summarizer]))
+                else:
+                    # The summary is going to be in a weird format...
+                    #sumy_summaries[summarizer].append(((i, summary, ref_summaries_by_index[i]), eval_results))
+                    for summary_data in sumy_summaries[summarizer]:
+                        doc_id = summary_data[0]
+                        summary = summary_data[1]
+                        #ref_summary = summary_data[2]
+                        eval_metrics = summary_data[3]
+                        msg = "SUMMARY [{}] FOR DOC_{} (ROUGE2: p={:.3f} r={:.3f}) (ROUGE3: p={:.3f} r={:.3f}): {}"
+                        _logger.info(msg.format(summarizer,
+                                                doc_id,
+                                                eval_metrics["rouge2-precision"],
+                                                eval_metrics["rouge2-recall"],
+                                                eval_metrics["rouge3-precision"],
+                                                eval_metrics["rouge3-recall"],
+                                                summary))
+
         # Summarization has finished. Enable the button again.
         self.summarize_button["state"] = "normal"
 
