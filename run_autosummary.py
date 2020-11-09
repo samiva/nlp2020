@@ -81,7 +81,7 @@ def main():
 def _run_cli(summary_config: Dict[str, Any]):
     if summary_config["source_type"] == "dataset":
         try:
-            eval_results = autosummary.evaluate_summaries(summary_config)
+            eval_results = autosummary.evaluate_summaries(summary_config.copy())
         except ValueError as e:
             _logger.exception(e)
             return
@@ -98,15 +98,17 @@ def _run_cli(summary_config: Dict[str, Any]):
                                     eval_metrics["rouge3-recall"],
                                     summary_output))
     else:
-        summary = autosummary.summary_by_config(summary_config)
+        summary = autosummary.summary_by_config(summary_config.copy())
         _logger.info("SUMMARY: {}".format(summary))
 
     if summary_config["use-sumy"]:
-        sumy_summaries = autosummary.summary_sumy(summary_config,
+        sumy_summaries = autosummary.summary_sumy(summary_config.copy(),
                                                   sumy_interface.SUMMARIZERS.keys())
         if sumy_summaries is not None:
             # TODO: Code reuse
             for summarizer in sumy_summaries.keys():
+                if sumy_summaries[summarizer] is None:
+                    _logger.info("{} - NO SUMMARY".format(summarizer.upper()))
                 if isinstance(sumy_summaries[summarizer], str):
                     _logger.info("{}: {}".format(summarizer.upper(),
                                                  sumy_summaries[summarizer]))

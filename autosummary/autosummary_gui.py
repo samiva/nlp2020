@@ -112,8 +112,11 @@ class Application(tk.Frame):
         # Log box
         self.result_box = tkinter.scrolledtext.ScrolledText(right_side_container,
                                                             wrap=tk.WORD,
-                                                            width=40,
-                                                            height=10)
+                                                            width=60,
+                                                            height=30,
+                                                            font=("Times New Roman",
+                                                                  10)
+                                                            )
         self.result_box.pack()
         self.result_box.configure(state='disabled')
 

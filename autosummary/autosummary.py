@@ -73,7 +73,7 @@ def _element_overlap(a: List[Any], b: List[Any]) -> int:
 
 def ref_summaries_by_indexes(source_paths: Sequence[str],
                              evaluate_count: int,
-                             random_indexes: bool = False):
+                             random_indexes: bool = False) -> Dict[int, str]:
     """Extract the reference summaries for a number of documents equal to evaluate_count.
     There is an assumption that the document indexes are numbered from 0..N. Pick
     the first evaluate_count document indexes if random_indexes is False. Otherwise
@@ -124,7 +124,7 @@ def evaluate_summaries(config: Dict[str, Any]) -> Sequence[Tuple[Tuple[int, str,
         # Go through the source_paths in order, get summaries and calculate their
         # ROUGE2 and ROUGE3 metrics based on the corresponding reference summaries.
         summary_config["source_path"] = source_paths[i]
-        summary = summary_by_config(summary_config)
+        summary = summary_by_config(summary_config.copy())
         eval_results = evaluate_summary(summary, ref_summaries_by_index[i])
         results.append(((i, summary, ref_summaries_by_index[i]), eval_results))
     return results
@@ -628,7 +628,8 @@ def summary_sumy(config: Dict[str, Any],
     elif config["source_type"] == "dataset":
         # TODO: Reuse the summary evaluation code - the following piece is mostly duplicate
         # Get a list of the dataset source urls
-        config["source_path"] += "/" + mod_config.DATASET_FILE
+        if not config["source_path"].endswith(mod_config.DATASET_FILE):
+            config["source_path"] += "/" + mod_config.DATASET_FILE
         source_paths = get_raw_source("file", config["source_path"])
         source_paths = source_paths.split("\n")
 
@@ -646,6 +647,7 @@ def summary_sumy(config: Dict[str, Any],
                 if summary in (None, "", " "):
                     # TODO: Better handling?
                     # Sumy's summarizer was not able to extract a summary: Skip it.
+                    sumy_summaries[summarizer] = None
                     continue
                 eval_results = evaluate_summary(summary, ref_summaries_by_index[i])
                 if summarizer not in sumy_summaries.keys():
