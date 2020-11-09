@@ -9,13 +9,15 @@ import tkinter.scrolledtext
 import tkinter.filedialog
 import tkinter.filedialog
 
-from typing import Any, Dict, Sequence, Tuple
+from typing import Any, Dict, List, Sequence, Tuple, Union
 
 from . import autosummary
 from . import config
 from . import sumy_interface
 
 _logger = logging.getLogger(__name__)
+_RESULT_BOX_SPLITTER = 32 * "="
+_RESULT_BOX_SPLITTER_LIGHT = 32 * "-"
 _WORKING_DIRECTORY = os.getcwd()
 
 
@@ -131,6 +133,113 @@ class Application(tk.Frame):
         self.create_left_side(main_frame)
         self.create_right_side(main_frame)
 
+    def print_own_summary_results(self,
+                                  source_type: str,
+                                  summarizer_results: List[Union[Tuple[Any,
+                                                                       Sequence[Tuple[Tuple[int,
+                                                                                            str,
+                                                                                            Sequence[str],
+                                                                                            Sequence[str],
+                                                                                            str],
+                                                                                      Dict[str,
+                                                                                           float]]]],
+                                                                 Tuple[Any,
+                                                                       str,
+                                                                       Sequence[str],
+                                                                       Sequence[str]]]]):
+        if source_type == "dataset":
+            for summarizer, summarizer_result in summarizer_results:
+                self.update_result_box("\n\n{}\n".format(_RESULT_BOX_SPLITTER))
+                self.update_result_box("SUMMARIZER: {}\n".format(summarizer))
+                self.update_result_box("{}\n\n".format(_RESULT_BOX_SPLITTER))
+                for result in summarizer_result:
+                    doc_id = result[0][0]
+                    summary = result[0][1]
+                    keywords = result[0][2]
+                    named_ents = result[0][3]
+                    ref_summary = result[0][4]
+                    eval_metrics = result[1]
+                    msg = "SUMMARY FOR DOC_{} (ROUGE2: p={:.3f} r={:.3f}) (ROUGE3: p={:.3f} r={:.3f}): {}"
+                    _logger.debug(msg.format(doc_id,
+                                             eval_metrics["rouge2-precision"],
+                                             eval_metrics["rouge2-recall"],
+                                             eval_metrics["rouge3-precision"],
+                                             eval_metrics["rouge3-recall"],
+                                             summary))
+                    self.update_result_box("\nDOCUMENT ID: {}\n".format(doc_id))
+                    self.update_result_box("REFERENCE SUMMARY:\n{}\n".format(ref_summary))
+
+                    _logger.debug("KEYWORDS: {}".format(keywords))
+                    self.update_result_box("\nKEYWORDS:\n{}\n".format(keywords))
+                    _logger.debug("TAGGED NAMED ENTITIES: {}".format(named_ents))
+                    self.update_result_box("\nTAGGED NAMED ENTITIES:\n{}\n".format(named_ents))
+
+                    self.update_result_box("\nSUMMARY:\n{}\n".format(summary))
+                    self.update_result_box("\nEVALUATION METRICS:\n")
+                    self.update_result_box("ROUGE2 PRECISION: {:.4f}\n".format(eval_metrics["rouge2-precision"]))
+                    self.update_result_box("ROUGE2 RECALL: {:.4f}\n".format(eval_metrics["rouge2-recall"]))
+                    self.update_result_box("\nROUGE3 PRECISION: {:.4f}\n".format(eval_metrics["rouge3-precision"]))
+                    self.update_result_box("ROUGE3 RECALL: {:.4f}\n".format(eval_metrics["rouge3-recall"]))
+                    self.update_result_box("\n{}\n\n".format(_RESULT_BOX_SPLITTER_LIGHT))
+        else:
+            for summarizer, summary, keywords, named_ents in summarizer_results:
+                self.update_result_box("\nSUMMARIZER: {}\n".format(summarizer))
+
+                _logger.debug("KEYWORDS: {}".format(keywords))
+                self.update_result_box("\nKEYWORDS:\n{}\n".format(keywords))
+
+                _logger.debug("TAGGED NAMED ENTITIES: {}".format(named_ents))
+                self.update_result_box("\nTAGGED NAMED ENTITIES:\n{}\n".format(named_ents))
+
+                _logger.debug("SUMMARY: {}".format(summary))
+                self.update_result_box("\nSUMMARY:\n{}\n".format(summary))
+
+                self.update_result_box("\n{}\n\n".format(_RESULT_BOX_SPLITTER))
+
+    def print_sumy_summary_results(self, sumy_summaries: Dict[str,
+                                                              Union[str,
+                                                                    Sequence[Tuple[int, str, str, Dict[str,
+                                                                                                       float]]]]]):
+        # TODO: Refactor, clean up, code reuse
+        for summarizer in sumy_summaries.keys():
+            if sumy_summaries[summarizer] is None:
+                self.update_result_box("\nSUMMARIZER: {} [SUMY]: NO SUMMARY\n".format(sumy_interface.SUMMARIZERS[summarizer]))
+                continue
+            if isinstance(sumy_summaries[summarizer], str):
+                _logger.debug("{}: {}".format(summarizer.upper(),
+                                              sumy_summaries[summarizer]))
+                summary = sumy_summaries[summarizer]
+                self.update_result_box("\nSUMMARIZER: {} [SUMY]\n".format(sumy_interface.SUMMARIZERS[summarizer]))
+                self.update_result_box("\nSUMMARY:\n{}\n".format(summary))
+                self.update_result_box("\n{}\n\n".format(_RESULT_BOX_SPLITTER))
+            else:
+                # The summary is going to be in a weird format...
+                self.update_result_box("\n\n{}\n".format(_RESULT_BOX_SPLITTER))
+                self.update_result_box("SUMMARIZER: {} [SUMY]\n".format(sumy_interface.SUMMARIZERS[summarizer]))
+                self.update_result_box("{}\n\n".format(_RESULT_BOX_SPLITTER))
+                for summary_data in sumy_summaries[summarizer]:
+                    doc_id = summary_data[0]
+                    summary = summary_data[1]
+                    ref_summary = summary_data[2]
+                    eval_metrics = summary_data[3]
+                    msg = "SUMMARY [{}] FOR DOC_{} (ROUGE2: p={:.3f} r={:.3f}) (ROUGE3: p={:.3f} r={:.3f}): {}"
+                    _logger.debug(msg.format(summarizer,
+                                             doc_id,
+                                             eval_metrics["rouge2-precision"],
+                                             eval_metrics["rouge2-recall"],
+                                             eval_metrics["rouge3-precision"],
+                                             eval_metrics["rouge3-recall"],
+                                             summary))
+                    self.update_result_box("\nDOCUMENT ID: {}\n".format(doc_id))
+                    self.update_result_box("REFERENCE SUMMARY:\n{}\n".format(ref_summary))
+                    self.update_result_box("\nSUMMARY:\n{}\n".format(summary))
+                    self.update_result_box("\nEVALUATION METRICS:\n")
+                    self.update_result_box("ROUGE2 PRECISION: {:.4f}\n".format(eval_metrics["rouge2-precision"]))
+                    self.update_result_box("ROUGE2 RECALL: {:.4f}\n".format(eval_metrics["rouge2-recall"]))
+                    self.update_result_box("\nROUGE3 PRECISION: {:.4f}\n".format(eval_metrics["rouge3-precision"]))
+                    self.update_result_box("ROUGE3 RECALL: {:.4f}\n".format(eval_metrics["rouge3-recall"]))
+                    self.update_result_box("\n{}\n\n".format(_RESULT_BOX_SPLITTER_LIGHT))
+
     def run_summarizers(self):
         # Disable the button until the summarization is done
         if self.source_path.get() in (None, "", " "):
@@ -163,62 +272,34 @@ class Application(tk.Frame):
             "evaluate-random": False,
         }
 
+        summary_results = []
+
+        if summarizer_config["source_type"] == "dataset":
+            summarizer_config["source_path"] += "/" + autosummary.mod_config.DATASET_FILE
+
+        _logger.critical(own_summarizers)
+
         for summarizer in own_summarizers:
             if summarizer_config["source_type"] == "dataset":
                 summarizer_config["keyword"] = summarizer
-                summarizer_config["source_path"] += "/" + autosummary.mod_config.DATASET_FILE
                 try:
-                    eval_results = _run_summarizer_evaluation(summarizer_config)
+                    eval_results = _run_summarizer_evaluation(summarizer_config.copy())
                 except ValueError as e:
                     _logger.exception(e)
                     return
+                summary_results.append((summarizer, eval_results))
 
-                for result in eval_results:
-                    doc_id = result[0][0]
-                    summary = result[0][1]
-                    keywords = result[0][2]
-                    named_ents = result[0][3]
-                    eval_metrics = result[1]
-                    msg = "SUMMARY FOR DOC_{} (ROUGE2: p={:.3f} r={:.3f}) (ROUGE3: p={:.3f} r={:.3f}): {}"
-                    _logger.debug(msg.format(doc_id,
-                                             eval_metrics["rouge2-precision"],
-                                             eval_metrics["rouge2-recall"],
-                                             eval_metrics["rouge3-precision"],
-                                             eval_metrics["rouge3-recall"],
-                                             summary))
             else:
                 summarizer_config["keyword"] = summarizer
-                summary, keywords, named_ents = _run_summarizer(summarizer_config)
-            # TODO: Display these in the result_box
-            _logger.info("KEYWORDS: {}".format(keywords))
-            _logger.info("NAMED ENTITIES: {}".format(named_ents))
-            _logger.info("SUMMARY: {}".format(summary))
+                summary, keywords, named_ents = _run_summarizer(summarizer_config.copy())
+                summary_results.append((summarizer, summary, keywords, named_ents))
+        self.print_own_summary_results(summarizer_config["source_type"],
+                                       summary_results)
 
-        sumy_summaries = autosummary.summary_sumy(summarizer_config,
+        sumy_summaries = autosummary.summary_sumy(summarizer_config.copy(),
                                                   sumy_summarizers)
-        if sumy_summaries is not None:
-            # TODO: Code reuse
-            for summarizer in sumy_summaries.keys():
-                # TODO: Display these in the result_box
-                if type(sumy_summaries[summarizer]) == "str":
-                    _logger.info("{}: {}".format(summarizer.upper(),
-                                                 sumy_summaries[summarizer]))
-                else:
-                    # The summary is going to be in a weird format...
-                    #sumy_summaries[summarizer].append(((i, summary, ref_summaries_by_index[i]), eval_results))
-                    for summary_data in sumy_summaries[summarizer]:
-                        doc_id = summary_data[0]
-                        summary = summary_data[1]
-                        #ref_summary = summary_data[2]
-                        eval_metrics = summary_data[3]
-                        msg = "SUMMARY [{}] FOR DOC_{} (ROUGE2: p={:.3f} r={:.3f}) (ROUGE3: p={:.3f} r={:.3f}): {}"
-                        _logger.info(msg.format(summarizer,
-                                                doc_id,
-                                                eval_metrics["rouge2-precision"],
-                                                eval_metrics["rouge2-recall"],
-                                                eval_metrics["rouge3-precision"],
-                                                eval_metrics["rouge3-recall"],
-                                                summary))
+        if sumy_summaries not in (None, "", " "):
+            self.print_sumy_summary_results(sumy_summaries)
 
         # Summarization has finished. Enable the button again.
         self.summarize_button["state"] = "normal"
@@ -248,6 +329,12 @@ class Application(tk.Frame):
         else:
             self.path_selector["state"] = "normal"
         self.source_path.set("")
+
+    def update_result_box(self, text: str):
+        self.result_box.configure(state="normal")
+        self.result_box.insert(tk.INSERT,
+                               text)
+        self.result_box.configure(state="disabled")
 
 
 class CheckboxColumn(tk.Frame):
