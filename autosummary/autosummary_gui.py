@@ -9,7 +9,7 @@ import tkinter.scrolledtext
 import tkinter.filedialog
 import tkinter.filedialog
 
-from typing import Any, Dict, List, Sequence, Tuple, Union
+from typing import Any, Dict, List, Optional, Sequence, Tuple, Union
 
 from . import autosummary
 from . import config
@@ -35,14 +35,19 @@ class Application(tk.Frame):
         self.pack()
 
         # Widgets that need to be accessible
+        self.dataset_doc_count_entry = None
         self.our_summarizer_options = None
         self.sumy_summarizer_options = None
         self.path_entry = None
         self.path_selector = None
         self.summarize_button = None
         self.result_box = None
+        self.random_checkbox = None
 
         # Variables that need to be accessible
+        # TODO: Better input element than tk.Entry with StringVar
+        self.dataset_doc_count = tk.StringVar(value="0")
+        self.random_documents = tk.IntVar(value=0)
         self.source_type = tk.StringVar(value=_SourceType.url.name)
         self.source_path = tk.StringVar(value="")
 
@@ -98,6 +103,21 @@ class Application(tk.Frame):
         url_radiobutton.pack(side=tk.LEFT)
         file_radiobutton.pack(side=tk.LEFT)
         dataset_radiobutton.pack(side=tk.LEFT)
+
+        # Dataset options
+        dataset_frame = tk.Frame(right_side_container)
+        dataset_frame.pack()
+        dataset_label = tk.Label(dataset_frame, text="Document count: ")
+        dataset_label.pack(side=tk.LEFT)
+        self.dataset_doc_count_entry = tk.Entry(dataset_frame)
+        self.dataset_doc_count_entry["textvariable"] = self.dataset_doc_count
+        self.dataset_doc_count_entry.pack(side=tk.LEFT)
+        self.dataset_doc_count_entry["state"] = "disabled"
+        self.random_checkbox = tk.Checkbutton(dataset_frame,
+                                              text="Random Document Indexes",
+                                              variable=self.random_documents)
+        self.random_checkbox.pack(side=tk.TOP, anchor=tk.W, expand=tk.YES)
+        self.random_checkbox["state"] = "disabled"
 
         # Source path selection
         path_frame = tk.Frame(right_side_container)
@@ -218,10 +238,11 @@ class Application(tk.Frame):
                 self.update_result_box("SUMMARIZER: {} [SUMY]\n".format(sumy_interface.SUMMARIZERS[summarizer]))
                 self.update_result_box("{}\n\n".format(_RESULT_BOX_SPLITTER))
                 for summary_data in sumy_summaries[summarizer]:
-                    doc_id = summary_data[0]
-                    summary = summary_data[1]
-                    ref_summary = summary_data[2]
-                    eval_metrics = summary_data[3]
+                    _logger.critical(summary_data)
+                    doc_id = summary_data[0][0]
+                    summary = summary_data[0][1]
+                    ref_summary = summary_data[0][2]
+                    eval_metrics = summary_data[1]
                     msg = "SUMMARY [{}] FOR DOC_{} (ROUGE2: p={:.3f} r={:.3f}) (ROUGE3: p={:.3f} r={:.3f}): {}"
                     _logger.debug(msg.format(summarizer,
                                              doc_id,
@@ -274,16 +295,33 @@ class Application(tk.Frame):
 
         summary_results = []
 
+        summarizer_config["evaluate-random"] = self.random_documents
+        try:
+            summarizer_config["evaluate-count"] = int(self.dataset_doc_count.get())
+        except ValueError:
+            _logger.warning("Invalid evaluate count: '{}'".format(self.dataset_doc_count.get()))
+            return
+
         if summarizer_config["source_type"] == "dataset":
             summarizer_config["source_path"] += "/" + autosummary.mod_config.DATASET_FILE
-
-        _logger.critical(own_summarizers)
+            # Get source paths so that "own" summarizers can use same documents as sumy's summarizers
+            source_paths = autosummary.get_raw_source("file",
+                                                      summarizer_config["source_path"])
+            source_paths = source_paths.split("\n")
+            ref_summaries_by_index = autosummary.ref_summaries_by_indexes(source_paths,
+                                                                          summarizer_config["evaluate-count"],
+                                                                          summarizer_config["evaluate-random"])
+        else:
+            # Set this to None so that it can be given as a parameter to sumy (if sumy
+            # is to be run).
+            ref_summaries_by_index = None
 
         for summarizer in own_summarizers:
             if summarizer_config["source_type"] == "dataset":
                 summarizer_config["keyword"] = summarizer
                 try:
-                    eval_results = _run_summarizer_evaluation(summarizer_config.copy())
+                    eval_results = _run_summarizer_evaluation(summarizer_config.copy(),
+                                                              ref_summaries_by_index)
                 except ValueError as e:
                     _logger.exception(e)
                     return
@@ -297,7 +335,8 @@ class Application(tk.Frame):
                                        summary_results)
 
         sumy_summaries = autosummary.summary_sumy(summarizer_config.copy(),
-                                                  sumy_summarizers)
+                                                  sumy_summarizers,
+                                                  ref_summaries_by_index=ref_summaries_by_index)
         if sumy_summaries not in (None, "", " "):
             self.print_sumy_summary_results(sumy_summaries)
 
@@ -326,8 +365,18 @@ class Application(tk.Frame):
     def source_type_selected(self):
         if self.source_type.get() == _SourceType.url.name:
             self.path_selector["state"] = "disabled"
+            self.random_checkbox["state"] = "disabled"
+            self.dataset_doc_count_entry["state"] = "disabled"
+        elif self.source_type.get() == _SourceType.dataset.name:
+            self.path_selector["state"] = "normal"
+            self.random_checkbox["state"] = "normal"
+            self.dataset_doc_count_entry["state"] = "normal"
         else:
             self.path_selector["state"] = "normal"
+            self.random_checkbox["state"] = "disabled"
+            self.dataset_doc_count_entry["state"] = "disabled"
+        self.dataset_doc_count.set("0")
+        self.random_checkbox.deselect()
         self.source_path.set("")
 
     def update_result_box(self, text: str):
@@ -360,19 +409,23 @@ def run():
     app.mainloop()
 
 
-def _run_summarizer_evaluation(summarizer_config: Dict[str, Any]) -> Sequence[Tuple[Tuple[int,
-                                                                                          str,
-                                                                                          Sequence[str],
-                                                                                          Sequence[str],
-                                                                                          str],
-                                                                                    Dict[str, float]]]:
+def _run_summarizer_evaluation(summarizer_config: Dict[str, Any],
+                               ref_summaries_by_index: Optional[Dict[int, str]] = None) -> Sequence[Tuple[Tuple[int,
+                                                                                                                str,
+                                                                                                                Sequence[str],
+                                                                                                                Sequence[str],
+                                                                                                                str],
+                                                                                                          Dict[str,
+                                                                                                               float]]]:
     source_paths = autosummary.get_raw_source("file",
                                               summarizer_config["source_path"])
     source_paths = source_paths.split("\n")
 
-    ref_summaries_by_index = autosummary.ref_summaries_by_indexes(source_paths,
-                                                                  summarizer_config["evaluate-count"],
-                                                                  summarizer_config["evaluate-random"])
+    if ref_summaries_by_index is None:
+        # Reference summaries already provided
+        ref_summaries_by_index = autosummary.ref_summaries_by_indexes(source_paths,
+                                                                      summarizer_config["evaluate-count"],
+                                                                      summarizer_config["evaluate-random"])
 
     # Dataset sources are stored as urls
     summarizer_config["source_type"] = "url"

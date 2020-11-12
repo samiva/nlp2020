@@ -78,6 +78,9 @@ def ref_summaries_by_indexes(source_paths: Sequence[str],
     There is an assumption that the document indexes are numbered from 0..N. Pick
     the first evaluate_count document indexes if random_indexes is False. Otherwise
     pick them at random from between 0 and the number of elements in source_paths."""
+    ref_summaries_all = _read_reference_summaries()
+    ref_summary_indexes = ref_summaries_all.keys()
+
     if evaluate_count == 0:
         msg = "Invalid evaluate count for ref summary extraction: '{}'.".format(evaluate_count)
         raise ValueError(msg)
@@ -89,17 +92,17 @@ def ref_summaries_by_indexes(source_paths: Sequence[str],
 
     if random_indexes:
         # Pick random document indexes for the summarization
-        indexes = []
-        for i in range(evaluate_count):
-            # Select a random index from the available document indexes
-            indexes.append(random.randint(0, len(source_paths) + 1))
+        indexes = random.sample(ref_summary_indexes, evaluate_count)
     else:
         # Pick the indexes from the beginning
-        indexes = [i for i in range(evaluate_count)]
-    return ref_summaries_for_indexes(indexes)
+        indexes = ref_summary_indexes[:evaluate_count]
+    return ref_summaries_for_indexes(ref_summaries_all,
+                                     indexes)
 
 
-def evaluate_summaries(config: Dict[str, Any]) -> Sequence[Tuple[Tuple[int, str, str], Dict[str, float]]]:
+def evaluate_summaries(config: Dict[str, Any],
+                       ref_summaries_by_index: Optional[Dict[int, str]] = None) \
+        -> Sequence[Tuple[Tuple[int, str, str], Dict[str, float]]]:
     """Read the reference summaries for the dataset. Pick document indexes for
     evaluation (either by random, if evaluate-random is set to True, or in order
     from the beginning otherwise). Run the summarization algorithm on the
@@ -111,9 +114,10 @@ def evaluate_summaries(config: Dict[str, Any]) -> Sequence[Tuple[Tuple[int, str,
     source_paths = get_raw_source("file", config["source_path"])
     source_paths = source_paths.split("\n")
 
-    ref_summaries_by_index = ref_summaries_by_indexes(source_paths,
-                                                      config["evaluate-count"],
-                                                      config["evaluate-random"])
+    if ref_summaries_by_index is None:
+        ref_summaries_by_index = ref_summaries_by_indexes(source_paths,
+                                                          config["evaluate-count"],
+                                                          config["evaluate-random"])
 
     summary_config = config
     # Dataset sources are stored as urls
@@ -132,6 +136,15 @@ def evaluate_summaries(config: Dict[str, Any]) -> Sequence[Tuple[Tuple[int, str,
 
 def evaluate_summary(summary: str, ref_summary: str) -> Dict[str, float]:
     """Returns the ROUGE2 and ROUGE3 (precision & recall) metrics for the summary."""
+    if summary in (None, "", " "):
+        _logger.info("EVALUATION: Empty summary given for evaluation.")
+        eval_results = {
+            "rouge2-precision": 0.0,
+            "rouge2-recall": 0.0,
+            "rouge3-precision": 0.0,
+            "rouge3-recall": 0.0,
+        }
+        return eval_results
     # ROUGE 2
     summary_bigrams = [a for a in nltk.bigrams(summary)]
     ref_summary_bigrams = [b for b in nltk.bigrams(ref_summary)]
@@ -395,10 +408,10 @@ def _read_reference_summaries() -> Dict[int, str]:
     return ref_summaries
 
 
-def ref_summaries_for_indexes(wanted_indexes: Sequence[int]) -> Dict[int, str]:
+def ref_summaries_for_indexes(ref_summaries_all: Dict[int, str],
+                              wanted_indexes: Sequence[int]) -> Dict[int, str]:
     """Returns a dictionary where each document index has a reference summary as
     a single string."""
-    ref_summaries_all = _read_reference_summaries()
     ref_summaries = dict()
     ref_summary_indexes = ref_summaries_all.keys()
 
@@ -609,10 +622,14 @@ def _summary_sentence_for_word(raw_sentences: Sequence[Tuple[str, Sequence[str]]
 
 def summary_sumy(config: Dict[str, Any],
                  summarizers: Sequence[str],
-                 summary_length: int = 10) -> Optional[Dict[str,
-                                                            Union[str,
-                                                                  Sequence[Tuple[int, str, str, Dict[str,
-                                                                                                     float]]]]]]:
+                 summary_length: int = 10,
+                 ref_summaries_by_index: Optional[Dict[int, str]] = None) -> Optional[Dict[str,
+                                                                                           Union[str,
+                                                                                                 Sequence[Tuple[int,
+                                                                                                                str,
+                                                                                                                str,
+                                                                                                                Dict[str,
+                                                                                                                     float]]]]]]:
     """Run specified sumy summarizers for the specified document. Return a dictionary
     of summarizer_name: output_summary key: value pairs."""
     # TODO: Consider a less silly data structure to return
@@ -633,9 +650,10 @@ def summary_sumy(config: Dict[str, Any],
         source_paths = get_raw_source("file", config["source_path"])
         source_paths = source_paths.split("\n")
 
-        ref_summaries_by_index = ref_summaries_by_indexes(source_paths,
-                                                          config["evaluate-count"],
-                                                          config["evaluate-random"])
+        if ref_summaries_by_index is None:
+            ref_summaries_by_index = ref_summaries_by_indexes(source_paths,
+                                                              config["evaluate-count"],
+                                                              config["evaluate-random"])
 
         for summarizer in summarizers:
             for i in ref_summaries_by_index.keys():

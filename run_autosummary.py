@@ -79,9 +79,20 @@ def main():
 
 
 def _run_cli(summary_config: Dict[str, Any]):
+    # Set this to None so that it can be given as a parameter to sumy (if sumy
+    # is to be run).
+    ref_summaries_by_index = None
     if summary_config["source_type"] == "dataset":
+        # Get source paths so that "own" summarizers can use same documents as sumy's summarizers
+        source_paths = autosummary.get_raw_source("file",
+                                                  summary_config["source_path"])
+        source_paths = source_paths.split("\n")
+        ref_summaries_by_index = autosummary.ref_summaries_by_indexes(source_paths,
+                                                                      summary_config["evaluate-count"],
+                                                                      summary_config["evaluate-random"])
         try:
-            eval_results = autosummary.evaluate_summaries(summary_config.copy())
+            eval_results = autosummary.evaluate_summaries(summary_config.copy(),
+                                                          ref_summaries_by_index)
         except ValueError as e:
             _logger.exception(e)
             return
@@ -103,7 +114,8 @@ def _run_cli(summary_config: Dict[str, Any]):
 
     if summary_config["use-sumy"]:
         sumy_summaries = autosummary.summary_sumy(summary_config.copy(),
-                                                  sumy_interface.SUMMARIZERS.keys())
+                                                  sumy_interface.SUMMARIZERS.keys(),
+                                                  ref_summaries_by_index=ref_summaries_by_index)
         if sumy_summaries is not None:
             # TODO: Code reuse
             for summarizer in sumy_summaries.keys():
@@ -115,7 +127,6 @@ def _run_cli(summary_config: Dict[str, Any]):
                 else:
                     # The summary is going to be in a weird format...
                     for summary_data in sumy_summaries[summarizer]:
-                        _logger.critical(summary_data)
                         doc_id = summary_data[0]
                         summary = summary_data[1]
                         # ref_summary = summary_data[0][2]
