@@ -85,7 +85,7 @@ def ref_summaries_by_indexes(source_paths: Sequence[str],
     the first evaluate_count document indexes if random_indexes is False. Otherwise
     pick them at random from between 0 and the number of elements in source_paths."""
     ref_summaries_all = _read_reference_summaries()
-    ref_summary_indexes = list(ref_summaries_all.keys())
+    ref_summary_indexes = sorted(ref_summaries_all.keys())
 
     if evaluate_count == 0:
         msg = "Invalid evaluate count for ref summary extraction: '{}'.".format(evaluate_count)
