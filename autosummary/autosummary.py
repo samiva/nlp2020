@@ -25,6 +25,12 @@ from . import config as mod_config
 
 
 _logger = logging.getLogger(__name__)
+_NULL_RESULTS = {
+    "rouge2-precision": 0.0,
+    "rouge2-recall": 0.0,
+    "rouge3-precision": 0.0,
+    "rouge3-recall": 0.0,
+}
 
 
 def _chapter_from_html(html: str, chapter_header: str) -> Optional[str]:
@@ -79,7 +85,7 @@ def ref_summaries_by_indexes(source_paths: Sequence[str],
     the first evaluate_count document indexes if random_indexes is False. Otherwise
     pick them at random from between 0 and the number of elements in source_paths."""
     ref_summaries_all = _read_reference_summaries()
-    ref_summary_indexes = ref_summaries_all.keys()
+    ref_summary_indexes = list(ref_summaries_all.keys())
 
     if evaluate_count == 0:
         msg = "Invalid evaluate count for ref summary extraction: '{}'.".format(evaluate_count)
@@ -138,13 +144,7 @@ def evaluate_summary(summary: str, ref_summary: str) -> Dict[str, float]:
     """Returns the ROUGE2 and ROUGE3 (precision & recall) metrics for the summary."""
     if summary in (None, "", " "):
         _logger.info("EVALUATION: Empty summary given for evaluation.")
-        eval_results = {
-            "rouge2-precision": 0.0,
-            "rouge2-recall": 0.0,
-            "rouge3-precision": 0.0,
-            "rouge3-recall": 0.0,
-        }
-        return eval_results
+        return _NULL_RESULTS
     # ROUGE 2
     summary_bigrams = [a for a in nltk.bigrams(summary)]
     ref_summary_bigrams = [b for b in nltk.bigrams(ref_summary)]
@@ -665,7 +665,10 @@ def summary_sumy(config: Dict[str, Any],
                 if summary in (None, "", " "):
                     # TODO: Better handling?
                     # Sumy's summarizer was not able to extract a summary: Skip it.
-                    sumy_summaries[summarizer] = None
+                    if summarizer not in sumy_summaries.keys():
+                        sumy_summaries[summarizer] = [((i, None, ref_summaries_by_index[i]), _NULL_RESULTS)]
+                    else:
+                        sumy_summaries[summarizer].append(((i, None, ref_summaries_by_index[i]), _NULL_RESULTS))
                     continue
                 eval_results = evaluate_summary(summary, ref_summaries_by_index[i])
                 if summarizer not in sumy_summaries.keys():
@@ -673,7 +676,7 @@ def summary_sumy(config: Dict[str, Any],
                     sumy_summaries[summarizer] = [((i, summary, ref_summaries_by_index[i]), eval_results)]
                 else:
                     # At least one summary already added: we can append to the list.
-                    sumy_summaries[summarizer].append((i, summary, ref_summaries_by_index[i], eval_results))
+                    sumy_summaries[summarizer].append(((i, summary, ref_summaries_by_index[i]), eval_results))
     else:
         # TODO: Support for local files
         msg = "Source type '{}' not supported for sumy summaries.".format(config["source_type"])
