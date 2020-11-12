@@ -173,12 +173,12 @@ class Application(tk.Frame):
                 self.update_result_box("SUMMARIZER: {}\n".format(summarizer))
                 self.update_result_box("{}\n\n".format(_RESULT_BOX_SPLITTER))
                 for result in summarizer_result:
-                    doc_id = result[0]
-                    summary = result[1]
-                    keywords = result[2]
-                    named_ents = result[3]
-                    ref_summary = result[4]
-                    eval_metrics = result[5]
+                    doc_id = result[0][0]
+                    summary = result[0][1]
+                    keywords = result[0][2]
+                    named_ents = result[0][3]
+                    ref_summary = result[0][4]
+                    eval_metrics = result[1]
                     msg = "SUMMARY FOR DOC_{} (ROUGE2: p={:.3f} r={:.3f}) (ROUGE3: p={:.3f} r={:.3f}): {}"
                     _logger.debug(msg.format(doc_id,
                                              eval_metrics["rouge2-precision"],
