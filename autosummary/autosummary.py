@@ -323,9 +323,9 @@ def _parse_ref_summaries(raw_summaries: Sequence[str]) -> Dict[int, Sequence[str
 
 
 def _plot_frequency_distribution(fdist: FreqDist) -> None:
-    """TODO: Generate histogram"""
-    fdist.plot()
-    #matplotlib.pyplot.hist(fdist.tabulate())
+    """Currently draws a line plot."""
+    if mod_config.PLOT_FREQ_DIST:
+        fdist.plot()
 
 
 def _preprocess_sentences(sentences_by_chapters: Sequence[Tuple[str, Sequence[str]]]) \

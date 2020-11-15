@@ -238,7 +238,6 @@ class Application(tk.Frame):
                 self.update_result_box("SUMMARIZER: {} [SUMY]\n".format(sumy_interface.SUMMARIZERS[summarizer]))
                 self.update_result_box("{}\n\n".format(_RESULT_BOX_SPLITTER))
                 for summary_data in sumy_summaries[summarizer]:
-                    _logger.critical(summary_data)
                     doc_id = summary_data[0][0]
                     summary = summary_data[0][1]
                     ref_summary = summary_data[0][2]

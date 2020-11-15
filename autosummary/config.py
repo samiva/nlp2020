@@ -11,6 +11,8 @@ LOGGING_FORMAT = "%(asctime)s %(module)s [%(levelname)s]: %(message)s"
 NAMED_ENTITY_TAGS = ("PERSON", "ORG")
 # Specifies whether named entities will be filtered out of keywords.
 NE_FILTER = False
+# Enable this if you are using CLI and want to see this. Does not work with GUI.
+PLOT_FREQ_DIST = False
 # string.punctuation doesn't consider these different quotation marks by default
 PUNCTUATION = string.punctuation + r'“' + r'”'
 REFERENCE_SUMMARY_FILES = (
