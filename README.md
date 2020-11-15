@@ -13,7 +13,7 @@ The program uses the following PyPI packages:
 * [beautifulsoup4](https://pypi.org/project/beautifulsoup4/)
 * [matplotlib](https://pypi.org/project/matplotlib/)
 * [nltk](https://pypi.org/project/nltk/)
-    * It may be necessary to download some parts of the nltk-data, and the surest way to make it work is to install the `book` collection.
+    * It may be necessary to download some parts of the nltk-data, and the surest way to make it work is to install the `book` collection (e.g. using `nltk.download()` in a python interpreter after importing nltk).
 * [rake-nltk](https://pypi.org/project/rake-nltk/)
 * [spacy](https://pypi.org/project/spacy/)
     * en_core_web_sm -model (can be installed e.g. by using `python -m spacy download en_core_web_sm`)
@@ -42,4 +42,4 @@ CLI: Run the summarizer for one dataset document with RAKE keyword extraction me
 `python3 run_autosummary.py cli dataset -k rake --evaluate 1`
 
 CLI: Run the summarizer for a URL with RAKE keyword extraction method and by all of Sumy's summarizers.
-`python3 run_autosummary.py cli dataset -k rake --sumy`
+`python3 run_autosummary.py cli url <valid_url_here> -k rake --sumy`
